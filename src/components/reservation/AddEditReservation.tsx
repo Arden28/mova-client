@@ -73,19 +73,24 @@ const autoLabel = (i: number) => `Point ${alphaLabels[i] ?? String(i + 1)}`
 /* ---------------------------- Mapbox Geocoding ----------------------------- */
 
 async function geocodeForward(q: string, token: string) {
-  if (!q || !token) return []
+  if (!q || !token) return [];
+
   const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
     q
-  )}.json?access_token=${token}&limit=6&language=fr`
-  const r = await fetch(url)
-  if (!r.ok) return []
-  const j = await r.json()
-  return (j.features ?? []).map((f: any) => ({
-    label: f.place_name as string,
-    lng: (f.center?.[0] as number) ?? 0,
-    lat: (f.center?.[1] as number) ?? 0,
-  }))
+  )}.json?access_token=${token}&limit=6&language=fr`;
+
+  const r = await fetch(url);
+  if (!r.ok) return [];
+
+  const j: { features?: { place_name: string; center: [number, number] }[] } = await r.json();
+
+  return (j.features ?? []).map((f) => ({
+    label: f.place_name,
+    lng: f.center?.[0] ?? 0,
+    lat: f.center?.[1] ?? 0,
+  }));
 }
+
 
 async function reverseGeocode(lng: number, lat: number, token: string) {
   if (!token) return undefined
@@ -530,7 +535,7 @@ export default function AddEditReservationDialog({
     setForm((prev) => ({ ...prev, [key]: val }))
   }
 
-  function setNested(path: string, val: any) {
+  function setNested(path: string, val: string) {
     setForm((prev) => {
       const next = { ...prev } as any
       const parts = path.split(".")

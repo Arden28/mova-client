@@ -40,8 +40,6 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
@@ -105,7 +103,7 @@ export type DataTableProps<T> = {
 /*                             Main DataTable                                  */
 /* -------------------------------------------------------------------------- */
 
-export function DataTable<T extends Record<string, any>>({
+export function DataTable<T extends Record<string, undefined>>({
   data: externalData,
   columns,
   getRowId,
@@ -118,7 +116,7 @@ export function DataTable<T extends Record<string, any>>({
   importLabel = "Import",
   pageSizeOptions = [10, 20, 30, 40, 50],
   renderRowActions,
-  drawer,
+  // drawer,
   onDeleteSelected,
 }: DataTableProps<T>) {
   const ALL_TOKEN = "__ALL__" // Radix Select can't use empty string
@@ -303,7 +301,7 @@ export function DataTable<T extends Record<string, any>>({
       const end = el.selectionEnd ?? el.value.length
       requestAnimationFrame(() => {
         el.focus({ preventScroll: true })
-        try { el.setSelectionRange(start, end) } catch {}
+        try { el.setSelectionRange(start, end) } catch (_err) {}
       })
     }
   }
@@ -402,38 +400,38 @@ export function DataTable<T extends Record<string, any>>({
   }
 
   // Optional Drawer helper (kept, unchanged)
-  function DrawerCell({ row }: { row: T }) {
-    if (!drawer) return null
-    const trigger =
-      drawer.renderTrigger ??
-      ((r: T) => <span className="text-foreground">{String(r[String(drawer.triggerField!)] ?? "")}</span>)
-    return (
-      <Drawer>
-        <DrawerTrigger asChild>
-          <Button variant="link" className="text-foreground w-fit px-0 text-left">
-            {trigger(row)}
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent>
-          <DrawerHeader className="gap-1">
-            <DrawerTitle>
-              {drawer.renderTitle ? drawer.renderTitle(row) : String(row[String(drawer.triggerField!)] ?? "")}
-            </DrawerTitle>
-          </DrawerHeader>
-          {drawer.renderBody && <div className="px-4 py-2">{drawer.renderBody(row)}</div>}
-          <DrawerFooter>
-            {drawer.renderFooter ? (
-              drawer.renderFooter(row)
-            ) : (
-              <DrawerClose asChild>
-                <Button variant="outline">Close</Button>
-              </DrawerClose>
-            )}
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
-    )
-  }
+  // function DrawerCell({ row }: { row: T }) {
+  //   if (!drawer) return null
+  //   const trigger =
+  //     drawer.renderTrigger ??
+  //     ((r: T) => <span className="text-foreground">{String(r[String(drawer.triggerField!)] ?? "")}</span>)
+  //   return (
+  //     <Drawer>
+  //       <DrawerTrigger asChild>
+  //         <Button variant="link" className="text-foreground w-fit px-0 text-left">
+  //           {trigger(row)}
+  //         </Button>
+  //       </DrawerTrigger>
+  //       <DrawerContent>
+  //         <DrawerHeader className="gap-1">
+  //           <DrawerTitle>
+  //             {drawer.renderTitle ? drawer.renderTitle(row) : String(row[String(drawer.triggerField!)] ?? "")}
+  //           </DrawerTitle>
+  //         </DrawerHeader>
+  //         {drawer.renderBody && <div className="px-4 py-2">{drawer.renderBody(row)}</div>}
+  //         <DrawerFooter>
+  //           {drawer.renderFooter ? (
+  //             drawer.renderFooter(row)
+  //           ) : (
+  //             <DrawerClose asChild>
+  //               <Button variant="outline">Close</Button>
+  //             </DrawerClose>
+  //           )}
+  //         </DrawerFooter>
+  //       </DrawerContent>
+  //     </Drawer>
+  //   )
+  // }
 
   /* ---------------------------------- Render ---------------------------------- */
   return (
