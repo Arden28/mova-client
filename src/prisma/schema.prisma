@@ -1,0 +1,289 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/* ===========================
+   Enums (from your types)
+=========================== */
+
+enum Role {
+  driver
+  owner
+  conductor
+  agent
+  admin
+}
+
+enum BusStatus {
+  active
+  maintenance
+  inactive
+}
+
+enum BusType {
+  standard
+  luxury
+  minibus
+}
+
+enum TripStatus {
+  scheduled
+  ongoing
+  completed
+  cancelled
+}
+
+enum ReservationStatus {
+  pending
+  confirmed
+  cancelled
+  completed
+}
+
+enum PaymentMethod {
+  cash
+  mpesa
+  card
+  momo
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+/* ===========================
+   Core models
+=========================== */
+
+// Person/User (auth-capable)
+model User {
+  id            String   @id @default(cuid())
+  role          Role
+  name          String
+  phone         String   @unique
+  email         String?  @unique
+  avatarUrl     String?
+  passwordHash  String?  // nullable if you later allow OTP-only
+  licenseNo     String?  // for drivers
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations (optional convenience)
+  // A driver can be assigned on trips or buses via FKs there.
+  assignedBuses   Bus[]    @relation("BusAssignedDriver")
+  ownedBuses      Bus[]    @relation("BusOwner")
+  drivenTrips     Trip[]   @relation("TripDriver")
+  conductedTrips  Trip[]   @relation("TripConductor")
+}
+
+/* ===========================
+   Fleet
+=========================== */
+
+model Bus {
+  id               String     @id @default(cuid())
+  plate            String     @unique
+  capacity         Int
+  name             String?
+  type             BusType?
+  status           BusStatus  @default(active)
+  model            String?
+  year             Int?
+  mileageKm        Int?
+  lastServiceDate  Date?
+  // Insurance (inline)
+  insuranceProvider    String?
+  insurancePolicyNumber String?
+  insuranceValidUntil  Date?
+
+  // Ownership/assignment
+  operatorId       String?    // owner (User)
+  assignedDriverId String?    // currently assigned driver (User)
+
+  operator         User?      @relation("BusOwner", fields: [operatorId], references: [id], onDelete: SetNull)
+  assignedDriver   User?      @relation("BusAssignedDriver", fields: [assignedDriverId], references: [id], onDelete: SetNull)
+
+  // Trips
+  trips            Trip[]
+
+  createdAt        DateTime   @default(now())
+}
+
+/* ===========================
+   Stops & Routes
+=========================== */
+
+model Stop {
+  id        String   @id @default(cuid())
+  name      String
+  city      String?
+  lat       Float?   // degrees
+  lng       Float?   // degrees
+  createdAt DateTime @default(now())
+
+  // Routes via join
+  routeStops RouteStop[]
+}
+
+model Route {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  originStopId     String
+  destinationStopId String
+  distanceKm       Int?
+  durationEstimate Int?     // minutes
+  createdAt        DateTime @default(now())
+
+  origin           Stop     @relation("RouteOrigin", fields: [originStopId], references: [id], onDelete: Restrict)
+  destination      Stop     @relation("RouteDestination", fields: [destinationStopId], references: [id], onDelete: Restrict)
+
+  // Ordered stops
+  stops            RouteStop[]
+
+  trips            Trip[]
+}
+
+// Ordered join table for route stops
+model RouteStop {
+  routeId    String
+  stopId     String
+  orderIndex Int
+
+  route      Route  @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stop       Stop   @relation(fields: [stopId], references: [id], onDelete: Restrict)
+
+  @@id([routeId, stopId])
+  @@unique([routeId, orderIndex])
+}
+
+/* ===========================
+   Trips & Scheduling
+=========================== */
+
+model Trip {
+  id             String      @id @default(cuid())
+  busId          String
+  routeId        String
+  driverId       String?
+  conductorId    String?
+  departureTime  DateTime
+  arrivalTime    DateTime?
+  status         TripStatus  @default(scheduled)
+  pricePerSeat   Decimal     @db.Decimal(10,2)
+  availableSeats Int
+  createdAt      DateTime    @default(now())
+
+  bus            Bus         @relation(fields: [busId], references: [id], onDelete: Restrict)
+  route          Route       @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  driver         User?       @relation("TripDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  conductor      User?       @relation("TripConductor", fields: [conductorId], references: [id], onDelete: SetNull)
+
+  reservations   Reservation[]
+
+  @@index([routeId, departureTime])
+  @@index([status])
+}
+
+/* ===========================
+   Reservations & Payments
+=========================== */
+
+model Reservation {
+  id             String             @id @default(cuid())
+  code           String             @unique
+  tripId         String
+  tripDate       DateTime               // ISODate
+  // Snapshots for robustness (denormalized nice-to-have)
+  routeFrom      String
+  routeTo        String
+  passengerName  String
+  passengerPhone String
+  passengerEmail String?
+  seats          Int                // number of seats
+  busIds         String[]           // supports multi-bus assignment if ever needed
+  priceTotal     Decimal            @db.Decimal(10,2)
+  currency       String             @default("XAF")
+  status         ReservationStatus  @default(pending)
+  createdAt      DateTime           @default(now())
+
+  trip           Trip               @relation(fields: [tripId], references: [id], onDelete: Restrict)
+
+  // Optional 1:1 payment link (the Payment also keeps reservationId unique)
+  payment        Payment?
+
+  @@index([tripId, status])
+}
+
+model Payment {
+  id             String         @id @default(cuid())
+  reservationId  String         @unique
+  amount         Decimal        @db.Decimal(10,2)
+  method         PaymentMethod
+  status         PaymentStatus
+  transactionRef String?
+  currency       String         @default("XAF")
+  createdAt      DateTime       @default(now())
+
+  reservation    Reservation    @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@index([transactionRef])
+}
+
+/* ===========================
+   Pricing & Settings
+=========================== */
+
+model PricingRule {
+  id                 String   @id @default(cuid())
+  baseFarePerKm      Decimal  @db.Decimal(10,2)
+  minFare            Decimal  @db.Decimal(10,2)
+  peakMultiplier     Decimal  @db.Decimal(4,2)  // e.g., 1.30
+  weekendMultiplier  Decimal  @db.Decimal(4,2)
+  createdAt          DateTime @default(now())
+}
+
+// Singleton configuration for the (single) company
+model Settings {
+  id                     Int      @id @default(1)
+  // Entreprise
+  companyName            String   @default("Acme Coaches")
+  legalName              String?
+  supportEmail           String?
+  supportPhone           String?
+  country                String   @default("CG")
+  timezone               String   @default("Africa/Brazzaville")
+  currency               String   @default("XAF")
+  address                String?
+  logoUrl                String?
+
+  // Notifications
+  emailProvider          String?
+  emailFrom              String?
+  emailApiKey            String?
+  smsProvider            String?
+  smsSenderId            String?
+  smsApiKey              String?
+
+  // Paiements (défauts)
+  paymentGateway         String?  // "cash" | "mtn_momo" | "mpesa" | "stripe" ...
+  publicKey              String?
+  secretKey              String?
+  webhookUrl             String?
+  webhookSecret          String?
+
+  // Règles de réservation
+  seatHoldMins           Int      @default(15)
+  autoCancelUnpaidMins   Int      @default(30)
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
