@@ -17,9 +17,8 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Shield, Bell, UserRound, Globe, KeyRound, Smartphone, LogOut, Trash2, UploadCloud, CheckCircle2 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { Shield, Bell, UserRound, Globe, LogOut, Trash2, UploadCloud, CheckCircle2 } from "lucide-react"
+// import { cn } from "@/lib/utils"
 
 /* ------------------------------- Schémas ------------------------------- */
 const profileSchema = z.object({
@@ -181,7 +180,6 @@ export default function MyAccount() {
               <div className="flex flex-col items-center gap-3">
                 <div className="relative h-24 w-24 overflow-hidden rounded-full ring-1 ring-border">
                   {avatarPreview ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" />
                   ) : (
                     <div className="grid h-full w-full place-items-center text-xs text-muted-foreground">

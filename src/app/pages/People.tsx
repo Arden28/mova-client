@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconPlus, IconPencil, IconTrash } from "@tabler/icons-react"
+import { IconPencil, IconTrash } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -68,6 +68,8 @@ type AddEditPersonDialogProps = {
   onSubmit: (p: Person) => void
 }
 
+type Role = "driver" | "owner" | "admin";
+
 function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditPersonDialogProps) {
   const [form, setForm] = React.useState<Partial<Person>>({})
   const [uploading, setUploading] = React.useState(false)
@@ -86,10 +88,14 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
     setUploading(true)
     try {
       const dataUrl = await fileToDataURL(file)
-      set("avatar", dataUrl as any)
+      set("avatar", dataUrl as string | undefined)
       toast.success("Avatar ajouté.")
-    } catch (err: any) {
-      toast.error(err?.message ?? "Échec du chargement de l'avatar.")
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(err.message)
+      } else {
+        toast.error("Échec du chargement de l'avatar.")
+      }
     } finally {
       setUploading(false)
       e.target.value = "" // allow re-selecting same file
@@ -107,7 +113,7 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
       password: form.password ? String(form.password) : undefined,
       licenseNo: form.licenseNo ? String(form.licenseNo).trim() : undefined,
       avatar: form.avatar ? String(form.avatar) : undefined,
-      createdAt: editing?.createdAt ?? (undefined as any),
+      createdAt: editing?.createdAt ?? (undefined as string | undefined),
     }
 
     if (!payload.name || !payload.phone) {
@@ -157,7 +163,7 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => set("avatar", undefined as any)}
+                      onClick={() => set("avatar", undefined as string | undefined)}
                     >
                       Retirer
                     </Button>
@@ -171,7 +177,7 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
                     id="avatarUrl"
                     placeholder="https://…"
                     value={form.avatar ?? ""}
-                    onChange={(e) => set("avatar", e.target.value as any)}
+                    onChange={(e) => set("avatar", e.target.value as string | undefined)}
                   />
                   <Button
                     type="button"
@@ -188,19 +194,19 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
 
           <div className="grid gap-1.5">
             <Label>Nom</Label>
-            <Input value={form.name ?? ""} onChange={(e) => set("name", e.target.value as any)} />
+            <Input value={form.name ?? ""} onChange={(e) => set("name", e.target.value as string)} />
           </div>
           <div className="grid gap-1.5">
             <Label>Téléphone</Label>
-            <Input value={form.phone ?? ""} onChange={(e) => set("phone", e.target.value as any)} />
+            <Input value={form.phone ?? ""} onChange={(e) => set("phone", e.target.value as string)} />
           </div>
           <div className="grid gap-1.5">
             <Label>Email (optionnel)</Label>
-            <Input value={form.email ?? ""} onChange={(e) => set("email", e.target.value as any)} />
+            <Input value={form.email ?? ""} onChange={(e) => set("email", e.target.value as string)} />
           </div>
           <div className="grid gap-1.5">
             <Label>Rôle</Label>
-            <Select value={(form.role as string) ?? "driver"} onValueChange={(v) => set("role", v as any)}>
+            <Select value={(form.role as string) ?? "driver"} onValueChange={(v) => set("role", v as Role)}>
               <SelectTrigger>
                 <SelectValue placeholder="Sélectionner un rôle" />
               </SelectTrigger>
@@ -216,7 +222,7 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
             <Label>N° de permis (chauffeurs)</Label>
             <Input
               value={form.licenseNo ?? ""}
-              onChange={(e) => set("licenseNo", e.target.value as any)}
+              onChange={(e) => set("licenseNo", e.target.value as string)}
               placeholder="Ex: DL-123456"
             />
           </div>
@@ -243,7 +249,7 @@ export default function PeoplePage() {
 
   const searchable = {
     placeholder: "Rechercher nom, téléphone, email…",
-    fields: ["name", "phone", "email", "licenseNo"] as const,
+    fields: ["name", "phone", "email", "licenseNo"] as  (keyof Person)[],
   }
 
   const filters: FilterConfig<Person>[] = [
@@ -360,11 +366,7 @@ export default function PeoplePage() {
           className="text-rose-600"
           onClick={() => {
             setRows((prev) => prev.filter((x) => x.id !== p.id))
-            toast({
-              variant: "destructive",
-              title: "Personne supprimée",
-              description: `Nom : ${p.name}`,
-            })
+            toast("Personne supprimée")
           }}
         >
           <IconTrash className="mr-2 h-4 w-4" /> Supprimer
@@ -433,7 +435,7 @@ export default function PeoplePage() {
         ]}
         sampleHeaders={["name", "role", "phone", "email", "licenseNo", "avatar"]}
         transform={(raw) => {
-          const norm = (v: any) => (typeof v === "string" ? v.trim() : v)
+          const norm = (v: string | null | undefined) => (typeof v === "string" ? v.trim() : v)
 
           const name = String(norm(raw.name) ?? "")
           const phone = String(norm(raw.phone) ?? "")

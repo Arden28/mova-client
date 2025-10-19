@@ -1,9 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { IconPlus, IconPencil, IconPower, IconTrash } from "@tabler/icons-react"
+import { IconPencil, IconPower, IconTrash } from "@tabler/icons-react"
 
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenuItem,
@@ -52,8 +51,8 @@ export default function BusesPage() {
 
   const searchable = {
     placeholder: "Rechercher immatriculation, modèle…",
-    fields: ["plate", "model"] as const,
-  }
+    fields: ["plate", "model"] as (keyof Bus)[], // cast to mutable array
+  };
 
   const filters: FilterConfig<Bus>[] = [
     {
@@ -175,10 +174,7 @@ export default function BusesPage() {
                   : x
               )
             )
-            toast({
-              title: isActive ? "Bus désactivé" : "Bus activé",
-              description: `Plaque : ${b.plate}`,
-            })
+            toast(isActive ? "Bus désactivé" : "Bus activé")
           }}
         >
           {isActive ? (
@@ -196,11 +192,7 @@ export default function BusesPage() {
           className="text-rose-600"
           onClick={() => {
             setRows((prev) => prev.filter((x) => x.id !== b.id))
-            toast({
-              variant: "destructive",
-              title: "Bus supprimé",
-              description: `Plaque : ${b.plate}`,
-            })
+            toast("Bus supprimé")
           }}
         >
           <IconTrash className="mr-2 h-4 w-4" /> Supprimer
@@ -281,7 +273,7 @@ export default function BusesPage() {
         ]}
         transform={(raw) => {
           // Clean/normalize + infer ids by name
-          const norm = (v: any) => (typeof v === "string" ? v.trim() : v)
+          const norm = (v: string | null | undefined) => (typeof v === "string" ? v.trim() : v);
 
           const plate = String(norm(raw.plate) ?? "").toUpperCase()
           if (!plate) return null
@@ -297,12 +289,12 @@ export default function BusesPage() {
           }
 
           // owner/driver can be provided as ID or as name—try both
-          const toPersonId = (v: any): Person["id"] | undefined => {
+          const toPersonId = (v: string | null | undefined): Person["id"] | undefined => {
             if (!v) return undefined
             const s = String(v).trim()
             // looks like an id?
             // your Person["id"] type might be string/number—adapt as needed
-            if (personById.get(s as any)) return s as any
+            if (personById.get(s as string)) return s as string | undefined
             // else try by name
             const idByName = personNameToId.get(s.toLowerCase())
             return idByName

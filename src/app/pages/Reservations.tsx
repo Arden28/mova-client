@@ -1,8 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconPlus, IconPencil, IconTrash } from "@tabler/icons-react"
-import { Button } from "@/components/ui/button"
+import { IconPencil, IconTrash } from "@tabler/icons-react"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
@@ -59,7 +58,7 @@ export default function ReservationPage() {
     const m = new Map<string, string>()
     for (const b of buses as Bus[]) {
       if (!b?.id) continue
-      const plate = (b as any)?.plate || b.id
+      const plate = b.plate ?? b.id
       m.set(b.id, plate)
     }
     return m
@@ -77,7 +76,7 @@ export default function ReservationPage() {
 
   const searchable = {
     placeholder: "Rechercher code, passager, téléphone, départ, arrivée…",
-    fields: ["code", "passenger.name", "passenger.phone", "route.from", "route.to"] as any,
+    fields: ["code", "passenger.name", "passenger.phone", "route.from", "route.to"] as  (keyof Reservation)[],
   }
 
   const filters: FilterConfig<Reservation>[] = [
@@ -248,7 +247,7 @@ export default function ReservationPage() {
           <DropdownMenuItem
             onClick={() => {
               setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: "cancelled" } : x)))
-              toast({ title: "Réservation annulée", description: `Code : ${r.code}` })
+              toast("Réservation annulée")
             }}
           >
             Annuler
@@ -261,7 +260,7 @@ export default function ReservationPage() {
           className="text-rose-600"
           onClick={() => {
             setRows((prev) => prev.filter((x) => x.id !== r.id))
-            toast({ variant: "destructive", title: "Réservation supprimée", description: `Code : ${r.code}` })
+            toast("Réservation supprimée")
           }}
         >
           <IconTrash className="mr-2 h-4 w-4" /> Supprimer
