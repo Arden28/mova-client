@@ -1,20 +1,17 @@
 "use client"
 
 import * as React from "react"
-import { IconPlus, IconPencil, IconPower, IconTrash } from "@tabler/icons-react"
+import { IconPencil, IconPower, IconTrash } from "@tabler/icons-react"
 
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-// import { useToast } from "@/components/ui/sonner"
 import { toast } from "sonner"
 
 import type { ColumnDef } from "@tanstack/react-table"
 import { DataTable, makeDrawerTriggerColumn } from "@/components/data-table"
-import type { FilterConfig } from "@/components/data-table"
 
 import AddEditBusDialog from "@/components/bus/AddEditBusDialog"
 import type { Bus, Person } from "@/types"
@@ -22,192 +19,42 @@ import { buses } from "@/data/buses"
 import { people } from "@/data/buses" // ajustez le chemin si nécessaire
 import ImportDialog from "@/components/common/ImportDialog"
 
-const seed = buses
+/* --------------------- helpers --------------------- */
+
+const uuid = (): string => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID()
+  return "id-" + Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+
+const seed: Bus[] = buses as Bus[]
+
+/* --------------------- component --------------------- */
 
 export default function BusesPage() {
-  // const { toast } = useToast()
-
   const [rows, setRows] = React.useState<Bus[]>(seed)
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Bus | null>(null)
 
   const [openImport, setOpenImport] = React.useState(false)
 
-  // If you want to resolve persons by name -> id from the file:
+  // name -> id
   const personNameToId = React.useMemo(() => {
     const m = new Map<string, Person["id"]>()
-    for (const p of people as Person[]) m.set((p.name || "").trim().toLowerCase(), p.id)
+    ;(people as Person[]).forEach((p) => {
+      const key = (p.name ?? "").trim().toLowerCase()
+      if (key) m.set(key, p.id)
+    })
     return m
   }, [])
 
-  // Index personnes: id -> Person
+  // id -> Person
   const personById = React.useMemo(() => {
     const map = new Map<Person["id"], Person>()
-    for (const p of people as Person[]) map.set(p.id, p)
+    ;(people as Person[]).forEach((p) => map.set(p.id, p))
     return map
   }, [])
 
-  const getPersonName = (id?: Person["id"]) =>
-    id ? personById.get(id)?.name ?? "—" : "—"
-
-  const searchable = {
-    placeholder: "Rechercher immatriculation, modèle…",
-    fields: ["plate", "model"] as const,
-  }
-
-  const filters: FilterConfig<Bus>[] = [
-    {
-      id: "status",
-      label: "Statut",
-      options: [
-        { label: "Actif", value: "active" },
-        { label: "Inactif", value: "inactive" },
-        { label: "Maintenance", value: "maintenance" },
-      ],
-      accessor: (b) => b.status ?? "",
-      defaultValue: "",
-    },
-  ]
-
-  const columns = React.useMemo<ColumnDef<Bus>[]>(() => {
-    return [
-      // Colonne principale cliquable (ouvre le tiroir)
-      makeDrawerTriggerColumn<Bus>("plate", {
-        triggerField: "plate",
-        renderTitle: (b) => b.plate,
-        renderBody: (b) => (
-          <div className="grid gap-2 text-sm">
-            <div>
-              <span className="text-muted-foreground">Capacité :</span> {b.capacity}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Propriétaire :</span>{" "}
-              {getPersonName(b.operatorId)}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Chauffeur :</span>{" "}
-              {getPersonName(b.assignedDriverId)}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Modèle :</span>{" "}
-              {b.model ?? "—"}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Année :</span>{" "}
-              {b.year ?? "—"}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Statut :</span>
-              <Badge variant="outline" className="px-1.5 capitalize">
-                {b.status ?? "—"}
-              </Badge>
-            </div>
-          </div>
-        ),
-      }),
-
-      // Capacité (alignée à droite)
-      {
-        accessorKey: "capacity",
-        header: () => <div className="w-full text-right">Capacité</div>,
-        cell: ({ row }) => (
-          <div className="w-full text-right">{row.original.capacity}</div>
-        ),
-      },
-
-      // Propriétaire (nom)
-      {
-        id: "owner",
-        header: "Propriétaire",
-        cell: ({ row }) => (
-          <span className="block max-w-[240px] truncate">
-            {getPersonName(row.original.operatorId)}
-          </span>
-        ),
-        enableSorting: false,
-      },
-
-      // Chauffeur (nom)
-      {
-        id: "driver",
-        header: "Chauffeur",
-        cell: ({ row }) => (
-          <span className="block max-w-[240px] truncate">
-            {getPersonName(row.original.assignedDriverId)}
-          </span>
-        ),
-        enableSorting: false,
-      },
-
-      // Statut
-      {
-        accessorKey: "status",
-        header: "Statut",
-        cell: ({ row }) => (
-          <Badge variant="outline" className="px-1.5 capitalize">
-            {row.original.status ?? "—"}
-          </Badge>
-        ),
-      },
-    ]
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [personById])
-
-  function renderRowActions(b: Bus) {
-    const isActive = (b.status ?? "inactive") === "active"
-    return (
-      <>
-        <DropdownMenuItem
-          onClick={() => {
-            setEditing(b)
-            setOpen(true)
-          }}
-        >
-          <IconPencil className="mr-2 h-4 w-4" /> Modifier
-        </DropdownMenuItem>
-
-        <DropdownMenuItem
-          onClick={() => {
-            setRows((prev) =>
-              prev.map((x) =>
-                x.id === b.id
-                  ? { ...x, status: isActive ? "inactive" : "active" }
-                  : x
-              )
-            )
-            toast({
-              title: isActive ? "Bus désactivé" : "Bus activé",
-              description: `Plaque : ${b.plate}`,
-            })
-          }}
-        >
-          {isActive ? (
-            "Désactiver"
-          ) : (
-            <>
-              <IconPower className="mr-2 h-4 w-4" /> Activer
-            </>
-          )}
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem
-          className="text-rose-600"
-          onClick={() => {
-            setRows((prev) => prev.filter((x) => x.id !== b.id))
-            toast({
-              variant: "destructive",
-              title: "Bus supprimé",
-              description: `Plaque : ${b.plate}`,
-            })
-          }}
-        >
-          <IconTrash className="mr-2 h-4 w-4" /> Supprimer
-        </DropdownMenuItem>
-      </>
-    )
-  }
+  const  getPersonName = (id?: Person["id"]) => (id ? personById.get(id)?.name ?? "—" : "—")
 
   return (
     <div className="space-y-5">
@@ -222,10 +69,103 @@ export default function BusesPage() {
 
       <DataTable<Bus>
         data={rows}
-        columns={columns}
+        columns={React.useMemo<ColumnDef<Bus>[]>(() => {
+          return [
+            // Colonne principale cliquable (ouvre le tiroir)
+            makeDrawerTriggerColumn<Bus>("plate", {
+              triggerField: "plate",
+              renderTitle: (b) => b.plate,
+              renderBody: (b) => (
+                <div className="grid gap-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Capacité :</span> {b.capacity}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Propriétaire :</span>{" "}
+                    {getPersonName(b.operatorId)}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Chauffeur :</span>{" "}
+                    {getPersonName(b.assignedDriverId)}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Modèle :</span> {b.model ?? "—"}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Année :</span> {b.year ?? "—"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Statut :</span>
+                    <Badge variant="outline" className="px-1.5 capitalize">
+                      {b.status ?? "—"}
+                    </Badge>
+                  </div>
+                </div>
+              ),
+            }),
+
+            // Capacité (alignée à droite)
+            {
+              accessorKey: "capacity",
+              header: () => <div className="w-full text-right">Capacité</div>,
+              cell: ({ row }) => <div className="w-full text-right">{row.original.capacity}</div>,
+            },
+
+            // Propriétaire (nom)
+            {
+              id: "owner",
+              header: "Propriétaire",
+              cell: ({ row }) => (
+                <span className="block max-w-[240px] truncate">
+                  {getPersonName(row.original.operatorId)}
+                </span>
+              ),
+              enableSorting: false,
+            },
+
+            // Chauffeur (nom)
+            {
+              id: "driver",
+              header: "Chauffeur",
+              cell: ({ row }) => (
+                <span className="block max-w-[240px] truncate">
+                  {getPersonName(row.original.assignedDriverId)}
+                </span>
+              ),
+              enableSorting: false,
+            },
+
+            // Statut
+            {
+              accessorKey: "status",
+              header: "Statut",
+              cell: ({ row }) => (
+                <Badge variant="outline" className="px-1.5 capitalize">
+                  {row.original.status ?? "—"}
+                </Badge>
+              ),
+            },
+          ]
+          // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [personById])}
         getRowId={(r) => r.id}
-        searchable={searchable}
-        filters={filters}
+        searchable={{
+          placeholder: "Rechercher immatriculation, modèle…",
+          fields: ["plate", "model"] as const,
+        }}
+        filters={[
+          {
+            id: "status",
+            label: "Statut",
+            options: [
+              { label: "Actif", value: "active" },
+              { label: "Inactif", value: "inactive" },
+              { label: "Maintenance", value: "maintenance" },
+            ],
+            accessor: (b) => b.status ?? "",
+            defaultValue: "",
+          },
+        ]}
         onAdd={() => {
           setEditing(null)
           setOpen(true)
@@ -233,13 +173,53 @@ export default function BusesPage() {
         addLabel="Ajouter un bus"
         onImport={() => setOpenImport(true)}
         importLabel="Importer"
-        renderRowActions={renderRowActions}
+        renderRowActions={(b) => {
+          const isActive = (b.status ?? "inactive") === "active"
+          return (
+            <>
+              <DropdownMenuItem
+                onClick={() => {
+                  setEditing(b)
+                  setOpen(true)
+                }}
+              >
+                <IconPencil className="mr-2 h-4 w-4" /> Modifier
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={() => {
+                  setRows((prev) =>
+                    prev.map((x) => (x.id === b.id ? { ...x, status: isActive ? "inactive" : "active" } : x)),
+                  )
+                  if (isActive) {
+                    toast("Bus désactivé", { description: `Plaque : ${b.plate}` })
+                  } else {
+                    toast.success("Bus activé", { description: `Plaque : ${b.plate}` })
+                  }
+                }}
+              >
+                <IconPower className="mr-2 h-4 w-4" />
+                {isActive ? "Désactiver" : "Activer"}
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                className="text-rose-600"
+                onClick={() => {
+                  setRows((prev) => prev.filter((x) => x.id !== b.id))
+                  toast.error("Bus supprimé", { description: `Plaque : ${b.plate}` })
+                }}
+              >
+                <IconTrash className="mr-2 h-4 w-4" /> Supprimer
+              </DropdownMenuItem>
+            </>
+          )
+        }}
         drawer={{ triggerField: "plate" }}
-        
         onDeleteSelected={(selected) => {
-          setRows(prev => prev.filter(b => !selected.some(s => s.id === b.id)))
-          // (optional) toast
-          // toast.success(`${selected.length} bus supprimé(s).`)
+          setRows((prev) => prev.filter((b) => !selected.some((s) => s.id === b.id)))
+          toast.success(`${selected.length} bus supprimé(s).`)
         }}
       />
 
@@ -247,7 +227,7 @@ export default function BusesPage() {
         open={open}
         onOpenChange={setOpen}
         editing={editing}
-        people={people}
+        people={people as Person[]}
         onSubmit={(bus) => {
           setRows((prev) => {
             const i = prev.findIndex((x) => x.id === bus.id)
@@ -257,11 +237,10 @@ export default function BusesPage() {
             return next
           })
           setEditing(null)
-          // Toast de succès déjà géré dans le dialog
         }}
       />
 
-      <ImportDialog<Bus>
+      <ImportDialog<Record<string, unknown>>
         open={openImport}
         onOpenChange={setOpenImport}
         title="Importer des bus"
@@ -275,75 +254,78 @@ export default function BusesPage() {
           { key: "operatorId", label: "Propriétaire (nom ou ID)" },
           { key: "assignedDriverId", label: "Chauffeur (nom ou ID)" },
         ]}
-        // optional: help auto-map (not mandatory)
         sampleHeaders={[
-          "plate", "model", "capacity", "year", "status", "owner", "driver", "operatorId", "assignedDriverId"
+          "plate",
+          "model",
+          "capacity",
+          "year",
+          "status",
+          "owner",
+          "driver",
+          "operatorId",
+          "assignedDriverId",
         ]}
         transform={(raw) => {
-          // Clean/normalize + infer ids by name
-          const norm = (v: any) => (typeof v === "string" ? v.trim() : v)
+          const norm = (v: unknown) => (typeof v === "string" ? v.trim() : v)
 
-          const plate = String(norm(raw.plate) ?? "").toUpperCase()
+          const plate = String(norm(raw["plate"]) ?? "").toUpperCase()
           if (!plate) return null
 
-          const model = norm(raw.model) ?? ""
-          const capacityNum = raw.capacity != null ? Number(raw.capacity) : undefined
-          const yearNum = raw.year != null ? Number(raw.year) : undefined
+          const model = (norm(raw["model"]) as string | undefined) || undefined
 
-          let status = String(norm(raw.status) ?? "").toLowerCase()
-          if (!["active", "inactive", "maintenance"].includes(status)) {
-            // soft-default if unknown
-            status = "inactive"
+          const toNumber = (v: unknown): number | undefined => {
+            if (v === null || v === undefined || v === "") return undefined
+            const n = Number(v)
+            return Number.isFinite(n) ? n : undefined
           }
 
-          // owner/driver can be provided as ID or as name—try both
-          const toPersonId = (v: any): Person["id"] | undefined => {
-            if (!v) return undefined
+          const capacityNum = toNumber(raw["capacity"]) ?? 0
+          const yearNum = toNumber(raw["year"])
+
+          let statusStr = String(norm(raw["status"]) ?? "").toLowerCase()
+          const allowed = new Set<NonNullable<Bus["status"]>>(["active", "inactive", "maintenance"])
+          if (!allowed.has(statusStr as NonNullable<Bus["status"]>)) statusStr = "inactive"
+
+          const toPersonId = (v: unknown): Person["id"] | undefined => {
+            if (v === null || v === undefined) return undefined
             const s = String(v).trim()
-            // looks like an id?
-            // your Person["id"] type might be string/number—adapt as needed
-            if (personById.get(s as any)) return s as any
-            // else try by name
-            const idByName = personNameToId.get(s.toLowerCase())
-            return idByName
+            if (personById.has(s as Person["id"])) return s as Person["id"]
+            const byName = personNameToId.get(s.toLowerCase())
+            return byName
           }
 
-          const operatorId = toPersonId(raw.operatorId ?? raw.owner)
-          const assignedDriverId = toPersonId(raw.assignedDriverId ?? raw.driver)
+          const operatorId = toPersonId(raw["operatorId"] ?? raw["owner"])
+          const assignedDriverId = toPersonId(raw["assignedDriverId"] ?? raw["driver"])
 
-          // Build Bus (ensure it matches your Bus type exactly)
           const bus: Bus = {
-            id: crypto.randomUUID(),              // generate new ids for imports
+            id: uuid(),
             plate,
-            model: model || undefined,
-            capacity: capacityNum ?? 0,
-            year: yearNum || undefined,
-            status: status as Bus["status"],
+            model,
+            capacity: capacityNum,
+            year: yearNum,
+            status: statusStr as Bus["status"],
             operatorId,
             assignedDriverId,
-            // add other Bus fields with defaults if you have any
           }
-          return bus
+
+          // cast to the ImportDialog generic
+          return bus as unknown as Record<string, unknown>
         }}
         onConfirm={(imported) => {
+          const typed = imported as unknown as Bus[]
+
           setRows((prev) => {
-            // simple dedupe by plate (keeps existing row if same plate)
-            const existingByPlate = new Map(prev.map((b) => [b.plate, b]))
             const merged: Bus[] = [...prev]
-            for (const nb of imported) {
-              if (existingByPlate.has(nb.plate)) {
-                // update existing
-                const idx = merged.findIndex((x) => x.plate === nb.plate)
-                if (idx >= 0) merged[idx] = { ...merged[idx], ...nb }
-              } else {
-                merged.unshift(nb)
-              }
+            for (const nb of typed) {
+              const idx = merged.findIndex((x) => x.plate === nb.plate)
+              if (idx >= 0) merged[idx] = { ...merged[idx], ...nb }
+              else merged.unshift(nb)
             }
             return merged
           })
+          toast.success(`${typed.length} bus importé(s).`)
         }}
       />
-
     </div>
   )
 }

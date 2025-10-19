@@ -1,9 +1,6 @@
 {
   "compilerOptions": {
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "skipLibCheck": true,
-    "types": ["node"],
+    // "types": ["node"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
