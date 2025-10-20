@@ -62,9 +62,12 @@ export default function BusesPage() {
   }, [people])
 
   const getPersonName = React.useCallback(
-    (id?: string, fallbackName?: string) => {
-      if (!id) return fallbackName ?? "—"
-      return personById.get(id)?.name ?? fallbackName ?? "—"
+    (id?: string | null, fallbackName?: string | null) => {
+      const safeId: string | undefined = id ?? undefined
+      const safeFallback: string | undefined = fallbackName ?? undefined
+
+      if (!safeId) return safeFallback ?? "—"
+      return personById.get(safeId)?.name ?? safeFallback ?? "—"
     },
     [personById]
   )

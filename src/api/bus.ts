@@ -62,11 +62,11 @@ export type UIBus = {
   insurancePolicyNumber?: string
   insuranceValidUntil?: string // YYYY-MM-DD
 
-  operatorId?: number | null
-  assignedDriverId?: number | null
-  
-  operatorName?: string
-  driverName?: string
+  operatorId?: string | null
+  assignedDriverId?: string | null
+
+  operatorName?: string | null
+  driverName?: string | null
 
   createdAt?: string
   updatedAt?: string
@@ -89,8 +89,8 @@ export function toUIBus(b: BusDto): UIBus {
     insuranceProvider: b.insurance_provider ?? undefined,
     insurancePolicyNumber: b.insurance_policy_number ?? undefined,
     insuranceValidUntil: b.insurance_valid_until ?? undefined,
-    operatorId: b.operator_id ?? undefined,
-    assignedDriverId: b.assigned_driver_id ?? undefined,
+    operatorId: b.operator_id ?? null,
+    assignedDriverId: b.assigned_driver_id ?? null,
     operatorName: b.operator?.name ?? undefined,
     driverName: b.driver?.name ?? undefined,
     createdAt: b.created_at ?? undefined,
