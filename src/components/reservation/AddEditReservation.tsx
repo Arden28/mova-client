@@ -5,6 +5,7 @@ import mapboxgl from "mapbox-gl"
 import { toast } from "sonner"
 
 import type { Reservation, Trip, Bus } from "@/types"
+import type { UIReservation } from "@/api/reservation"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -444,8 +445,8 @@ function MapPicker({
 type Props = {
   open: boolean
   onOpenChange: (v: boolean) => void
-  editing: Reservation | null
-  onSubmit: (r: Reservation) => void
+  editing: UIReservation | null
+  onSubmit: (r: UIReservation) => void
   trips?: Trip[]
   buses: Bus[]
 }
@@ -468,7 +469,7 @@ export default function AddEditReservationDialog({
   buses,
   
 }: Props) {
-  const [form, setForm] = React.useState<Partial<Reservation>>({})
+  const [form, setForm] = React.useState<Partial<UIReservation>>({})
   const [waypoints, setWaypoints] = React.useState<Waypoint[]>([])
   const [busIds, setBusIds] = React.useState<string[]>([])
   const [routeKm, setRouteKm] = React.useState<number | null>(null)
@@ -590,7 +591,7 @@ export default function AddEditReservationDialog({
     const fromLabel = waypoints[0]?.label || "Départ"
     const toLabel = waypoints[waypoints.length - 1]?.label || "Arrivée"
 
-    const payload: Reservation = {
+    const payload: UIReservation = {
       id,
       code,
       tripDate: String(form.tripDate ?? ""),
