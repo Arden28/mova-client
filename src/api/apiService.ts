@@ -99,7 +99,7 @@ async function doFetch<TRes>(
     method,
     headers,
     body: withBody ? JSON.stringify(body) : undefined,
-    credentials: "omit", // token is in Authorization header
+    // credentials: "omit", // token is in Authorization header
   });
 
   // 204 No Content
