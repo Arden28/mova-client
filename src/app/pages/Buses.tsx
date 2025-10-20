@@ -1,23 +1,25 @@
+// src/pages/Buses.tsx
 "use client"
 
 import * as React from "react"
 import { IconPencil, IconPower, IconTrash } from "@tabler/icons-react"
+import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { toast } from "sonner"
 
 import { type ColumnDef } from "@tanstack/react-table"
 import { DataTable, makeDrawerTriggerColumn, type FilterConfig } from "@/components/data-table"
 
 import AddEditBusDialog from "@/components/bus/AddEditBusDialog"
-import type { Bus, Person } from "@/types"
-import { buses } from "@/data/buses"
-import { people } from "@/data/buses" // ajustez le chemin si nécessaire
 import ImportDialog from "@/components/common/ImportDialog"
+
+import busApi, { type UIBus, type BusStatus } from "@/api/bus"
+import peopleApi, { type Person } from "@/api/people"
+import { ApiError } from "@/api/apiService"
 
 /* --------------------- helpers --------------------- */
 
@@ -26,38 +28,77 @@ const uuid = (): string => {
   return "id-" + Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
-const seed: Bus[] = buses as Bus[]
+function showValidationErrors(err: unknown) {
+  const e = err as ApiError
+  if (e?.payload?.errors) {
+    const lines = Object.entries(e.payload.errors).map(([k, v]) => {
+      const msg = Array.isArray(v) ? v[0] : v
+      return `${k}: ${msg}`
+    })
+    if (lines.length) {
+      toast.error(lines.join("\n"))
+      return
+    }
+  }
+  toast.error((e as any)?.message ?? "Erreur inconnue.")
+}
 
 /* --------------------- component --------------------- */
 
 export default function BusesPage() {
-  const [rows, setRows] = React.useState<Bus[]>(seed)
+  const [rows, setRows] = React.useState<UIBus[]>([])
+  const [loading, setLoading] = React.useState<boolean>(true)
   const [open, setOpen] = React.useState(false)
-  const [editing, setEditing] = React.useState<Bus | null>(null)
+  const [editing, setEditing] = React.useState<UIBus | null>(null)
   const [openImport, setOpenImport] = React.useState(false)
 
-  // name -> id
-  const personNameToId = React.useMemo(() => {
-    const m = new Map<string, Person["id"]>()
-    ;(people as Person[]).forEach((p) => {
-      const key = (p.name ?? "").trim().toLowerCase()
-      if (key) m.set(key, p.id)
-    })
-    return m
-  }, [])
+  // People cache for dialog dropdowns / fallbacks
+  const [people, setPeople] = React.useState<Person[]>([])
 
-  // id -> Person
   const personById = React.useMemo(() => {
     const map = new Map<Person["id"], Person>()
-    ;(people as Person[]).forEach((p) => map.set(p.id, p))
+    people.forEach((p) => map.set(p.id, p))
     return map
+  }, [people])
+
+  const getPersonName = React.useCallback(
+    (id?: string, fallbackName?: string) => {
+      if (!id) return fallbackName ?? "—"
+      return personById.get(id)?.name ?? fallbackName ?? "—"
+    },
+    [personById]
+  )
+
+  const reload = React.useCallback(async () => {
+    try {
+      setLoading(true)
+      const [busRes, peopleRes] = await Promise.all([
+        busApi.list({ per_page: 100, with: ["operator", "driver"], order_by: "created_at", order_dir: "desc" }),
+        peopleApi.list({ per_page: 200 }), // owner/driver/conductor
+      ])
+      setRows(busRes.data.rows)
+      setPeople(peopleRes.data.rows)
+    } catch (e) {
+      showValidationErrors(e)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  const getPersonName = (id?: Person["id"]) => (id ? personById.get(id)?.name ?? "—" : "—")
+  React.useEffect(() => {
+    let alive = true
+    ;(async () => {
+      await reload()
+      if (!alive) return
+    })()
+    return () => {
+      alive = false
+    }
+  }, [reload])
 
-  const columns = React.useMemo<ColumnDef<Bus>[]>(() => {
+  const columns = React.useMemo<ColumnDef<UIBus>[]>(() => {
     return [
-      makeDrawerTriggerColumn<Bus>("plate", {
+      makeDrawerTriggerColumn<UIBus>("plate", {
         triggerField: "plate",
         renderTitle: (b) => b.plate,
         renderBody: (b) => (
@@ -66,10 +107,12 @@ export default function BusesPage() {
               <span className="text-muted-foreground">Capacité :</span> {b.capacity}
             </div>
             <div>
-              <span className="text-muted-foreground">Propriétaire :</span> {getPersonName(b.operatorId)}
+              <span className="text-muted-foreground">Propriétaire :</span>{" "}
+              {getPersonName(b.operatorId, b.operatorName)}
             </div>
             <div>
-              <span className="text-muted-foreground">Chauffeur :</span> {getPersonName(b.assignedDriverId)}
+              <span className="text-muted-foreground">Chauffeur :</span>{" "}
+              {getPersonName(b.assignedDriverId, b.driverName)}
             </div>
             <div>
               <span className="text-muted-foreground">Modèle :</span> {b.model ?? "—"}
@@ -98,7 +141,7 @@ export default function BusesPage() {
         header: "Propriétaire",
         cell: ({ row }) => (
           <span className="block max-w-[240px] truncate">
-            {getPersonName(row.original.operatorId)}
+            {getPersonName(row.original.operatorId, row.original.operatorName)}
           </span>
         ),
         enableSorting: false,
@@ -109,7 +152,7 @@ export default function BusesPage() {
         header: "Chauffeur",
         cell: ({ row }) => (
           <span className="block max-w-[240px] truncate">
-            {getPersonName(row.original.assignedDriverId)}
+            {getPersonName(row.original.assignedDriverId, row.original.driverName)}
           </span>
         ),
         enableSorting: false,
@@ -125,17 +168,17 @@ export default function BusesPage() {
         ),
       },
     ]
-  }, [personById])
+  }, [getPersonName])
 
   const searchable = React.useMemo(
     () => ({
       placeholder: "Rechercher immatriculation, modèle…",
-      fields: ["plate", "model"] as (keyof Bus)[],
+      fields: ["plate", "model"] as (keyof UIBus)[],
     }),
     []
   )
 
-  const filters = React.useMemo<FilterConfig<Bus>[]>(() => {
+  const filters = React.useMemo<FilterConfig<UIBus>[]>(() => {
     return [
       {
         id: "status",
@@ -144,13 +187,14 @@ export default function BusesPage() {
           { label: "Actif", value: "active" },
           { label: "Inactif", value: "inactive" },
           { label: "Maintenance", value: "maintenance" },
-          // map accessor -> status string
         ],
         accessor: (b) => b.status ?? "",
         defaultValue: "",
       },
     ]
   }, [])
+
+  const isServerUuid = (id: string) => /^[0-9a-fA-F-]{36}$/.test(id)
 
   return (
     <div className="space-y-5">
@@ -163,12 +207,13 @@ export default function BusesPage() {
         </div>
       </div>
 
-      <DataTable<Bus>
+      <DataTable<UIBus>
         data={rows}
         columns={columns}
         getRowId={(r) => r.id}
         searchable={searchable}
         filters={filters}
+        loading={loading}
         onAdd={() => {
           setEditing(null)
           setOpen(true)
@@ -190,14 +235,20 @@ export default function BusesPage() {
               </DropdownMenuItem>
 
               <DropdownMenuItem
-                onClick={() => {
-                  setRows((prev) =>
-                    prev.map((x) => (x.id === b.id ? { ...x, status: isActive ? "inactive" : "active" } : x)),
-                  )
-                  if (isActive) {
-                    toast("Bus désactivé", { description: `Plaque : ${b.plate}` })
-                  } else {
-                    toast.success("Bus activé", { description: `Plaque : ${b.plate}` })
+                onClick={async () => {
+                  // optimistic toggle + server call
+                  const prev = rows
+                  const nextStatus: BusStatus = isActive ? "inactive" : "active"
+                  setRows((r) => r.map((x) => (x.id === b.id ? { ...x, status: nextStatus } : x)))
+                  try {
+                    await busApi.setStatus(b.id, nextStatus)
+                    toast.success(
+                      nextStatus === "active" ? "Bus activé" : "Bus désactivé",
+                      { description: `Plaque : ${b.plate}` }
+                    )
+                  } catch (e) {
+                    setRows(prev)
+                    showValidationErrors(e)
                   }
                 }}
               >
@@ -209,9 +260,17 @@ export default function BusesPage() {
 
               <DropdownMenuItem
                 className="text-rose-600"
-                onClick={() => {
-                  setRows((prev) => prev.filter((x) => x.id !== b.id))
-                  toast.error("Bus supprimé", { description: `Plaque : ${b.plate}` })
+                onClick={async () => {
+                  // optimistic delete + rollback
+                  const prev = rows
+                  setRows((r) => r.filter((x) => x.id !== b.id))
+                  try {
+                    if (isServerUuid(b.id)) await busApi.remove(b.id)
+                    toast.error("Bus supprimé", { description: `Plaque : ${b.plate}` })
+                  } catch (e) {
+                    setRows(prev)
+                    showValidationErrors(e)
+                  }
                 }}
               >
                 <IconTrash className="mr-2 h-4 w-4" /> Supprimer
@@ -220,26 +279,55 @@ export default function BusesPage() {
           )
         }}
         drawer={{ triggerField: "plate" }}
-        onDeleteSelected={(selected) => {
-          setRows((prev) => prev.filter((b) => !selected.some((s) => s.id === b.id)))
-          toast.success(`${selected.length} bus supprimé(s).`)
+        onDeleteSelected={async (selected) => {
+          if (selected.length === 0) return
+          const prev = rows
+          setRows((r) => r.filter((b) => !selected.some((s) => s.id === b.id)))
+          try {
+            await Promise.all(
+              selected.filter((s) => isServerUuid(s.id)).map((s) => busApi.remove(s.id))
+            )
+            toast.success(`${selected.length} bus supprimé(s).`)
+          } catch (e) {
+            setRows(prev)
+            showValidationErrors(e)
+          }
         }}
       />
 
       <AddEditBusDialog
         open={open}
         onOpenChange={setOpen}
-        editing={editing}
-        people={people as Person[]}
-        onSubmit={(bus) => {
-          setRows((prev) => {
-            const i = prev.findIndex((x) => x.id === bus.id)
-            if (i === -1) return [bus, ...prev]
-            const next = [...prev]
-            next[i] = { ...prev[i], ...bus }
-            return next
-          })
-          setEditing(null)
+        editing={editing as any} // dialog shape matches UIBus keys used (plate, capacity, model, year, status, operatorId, assignedDriverId)
+        people={people}
+        onSubmit={async (bus: any) => {
+          // bus has UIBus-compatible fields
+          if (editing) {
+            const prev = rows
+            setRows((r) => r.map((x) => (x.id === bus.id ? { ...x, ...bus } as UIBus : x)))
+            try {
+              await busApi.update(bus.id, bus)
+              await reload()
+              toast("Bus mis à jour", { description: `Plaque : ${bus.plate}` })
+            } catch (e) {
+              setRows(prev)
+              showValidationErrors(e)
+            } finally {
+              setEditing(null)
+            }
+          } else {
+            const tempId = uuid()
+            const tempRow: UIBus = { id: tempId, ...bus }
+            setRows((r) => [tempRow, ...r])
+            try {
+              await busApi.create(bus)
+              await reload()
+              toast.success("Bus ajouté", { description: `Plaque : ${bus.plate}` })
+            } catch (e) {
+              setRows((r) => r.filter((x) => x.id !== tempId))
+              showValidationErrors(e)
+            }
+          }
         }}
       />
 
@@ -274,7 +362,7 @@ export default function BusesPage() {
           const plate = String(norm(raw["plate"]) ?? "").toUpperCase()
           if (!plate) return null
 
-          const model = (norm(raw["model"]) as string | undefined) || undefined
+          const model = (norm(raw["model"]) as string | undefined) ?? undefined
 
           const toNumber = (v: unknown): number | undefined => {
             if (v === null || v === undefined || v === "") return undefined
@@ -286,45 +374,50 @@ export default function BusesPage() {
           const yearNum = toNumber(raw["year"])
 
           let statusStr = String(norm(raw["status"]) ?? "").toLowerCase()
-          const allowed = new Set<NonNullable<Bus["status"]>>(["active", "inactive", "maintenance"])
-          if (!allowed.has(statusStr as NonNullable<Bus["status"]>)) statusStr = "inactive"
+          const allowed = new Set<NonNullable<UIBus["status"]>>(["active", "inactive", "maintenance"])
+          if (!allowed.has(statusStr as NonNullable<UIBus["status"]>)) statusStr = "inactive"
 
           const toPersonId = (v: unknown): Person["id"] | undefined => {
             if (v === null || v === undefined) return undefined
             const s = String(v).trim()
+            // Prefer id match; fall back to name in our cached list
             if (personById.has(s as Person["id"])) return s as Person["id"]
-            const byName = personNameToId.get(s.toLowerCase())
-            return byName
+            const lower = s.toLowerCase()
+            for (const p of people) {
+              if ((p.name ?? "").trim().toLowerCase() === lower) return p.id
+            }
+            return undefined
           }
 
           const operatorId = toPersonId(raw["operatorId"] ?? raw["owner"])
           const assignedDriverId = toPersonId(raw["assignedDriverId"] ?? raw["driver"])
 
-          const bus: Bus = {
+          const bus: UIBus = {
             id: uuid(),
             plate,
             model,
             capacity: capacityNum,
             year: yearNum,
-            status: statusStr as Bus["status"],
+            status: statusStr as UIBus["status"],
             operatorId,
             assignedDriverId,
           }
 
           return bus as unknown as Record<string, unknown>
         }}
-        onConfirm={(imported) => {
-          const typed = imported as unknown as Bus[]
-          setRows((prev) => {
-            const merged: Bus[] = [...prev]
-            for (const nb of typed) {
-              const idx = merged.findIndex((x) => x.plate === nb.plate)
-              if (idx >= 0) merged[idx] = { ...merged[idx], ...nb }
-              else merged.unshift(nb)
-            }
-            return merged
-          })
-          toast.success(`${typed.length} bus importé(s).`)
+        onConfirm={async (imported) => {
+          const typed = imported as unknown as UIBus[]
+          // optimistic add, then try create sequentially
+          const prev = rows
+          setRows((r) => [...typed, ...r])
+          try {
+            await Promise.all(typed.map((b) => busApi.create({ ...b, id: undefined as any })))
+            await reload()
+            toast.success(`${typed.length} bus importé(s).`)
+          } catch (e) {
+            setRows(prev)
+            showValidationErrors(e)
+          }
         }}
       />
     </div>

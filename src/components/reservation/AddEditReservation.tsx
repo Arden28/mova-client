@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { Info } from "lucide-react"
+import api from "@/api/apiService"
 
 /* ----------------------------------------------------------------------------- 
    ENV
@@ -73,24 +74,23 @@ const autoLabel = (i: number) => `Point ${alphaLabels[i] ?? String(i + 1)}`
 /* ---------------------------- Mapbox Geocoding ----------------------------- */
 
 async function geocodeForward(q: string, token: string) {
-  if (!q || !token) return [];
+  if (!q || !token) return []
 
   const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
     q
-  )}.json?access_token=${token}&limit=6&language=fr`;
+  )}.json?access_token=${token}&limit=6&language=fr`
 
-  const r = await fetch(url);
-  if (!r.ok) return [];
+  const r = await fetch(url)
+  if (!r.ok) return []
 
-  const j: { features?: { place_name: string; center: [number, number] }[] } = await r.json();
+  const j: { features?: { place_name: string; center: [number, number] }[] } = await r.json()
 
   return (j.features ?? []).map((f) => ({
     label: f.place_name,
     lng: f.center?.[0] ?? 0,
     lat: f.center?.[1] ?? 0,
-  }));
+  }))
 }
-
 
 async function reverseGeocode(lng: number, lat: number, token: string) {
   if (!token) return undefined
@@ -234,16 +234,13 @@ function MapPicker({
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const markersRef = React.useRef<mapboxgl.Marker[]>([])
 
-  // for route layer
   const routeSourceId = React.useRef(`route-src-${Math.random().toString(36).slice(2)}`)
   const routeLayerId = React.useRef(`route-lyr-${Math.random().toString(36).slice(2)}`)
 
-  // Recherche
   const [query, setQuery] = React.useState("")
   const [results, setResults] = React.useState<{ label: string; lat: number; lng: number }[]>([])
   const [loading, setLoading] = React.useState(false)
 
-  // Debounce recherche
   React.useEffect(() => {
     const id = setTimeout(async () => {
       if (!query || query.trim().length < 2) {
@@ -261,46 +258,38 @@ function MapPicker({
     return () => clearTimeout(id)
   }, [query])
 
-  // Init carte (center on user location if available; fallback to Brazzaville)
   React.useEffect(() => {
     if (!containerRef.current || mapRef.current) return
     if (!MAPBOX_TOKEN) return
 
-    const DEFAULT_CENTER: [number, number] = [15.2832, -4.2667] // Brazzaville fallback
+    const DEFAULT_CENTER: [number, number] = [15.2832, -4.2667]
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
       center: DEFAULT_CENTER,
-      zoom: 10,                 // niveau ville par défaut
-      // no minZoom -> user can zoom out freely
-      maxZoom: 18,              // zoom fin quartier
+      zoom: 10,
+      maxZoom: 18,
       accessToken: MAPBOX_TOKEN,
     })
     mapRef.current = map
 
-    // Try to re-center on user's location (does not change zoom)
     if (typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const { latitude, longitude } = pos.coords
           map.setCenter([longitude, latitude])
         },
-        () => {
-          // silently keep fallback on error/denied
-        },
+        () => {},
         { enableHighAccuracy: true, maximumAge: 60000, timeout: 7000 }
       )
     }
 
-    // Clic = ajout point avec reverse geocode (fallback label)
     map.on("click", async (e) => {
       const { lng, lat } = e.lngLat
       let label = await reverseGeocode(lng, lat, MAPBOX_TOKEN)
       if (!label) label = autoLabel(waypoints.length)
       onChange([...waypoints, { lat, lng, label }])
-
-      // se rapprocher du clic
       map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 14), duration: 500 })
     })
 
@@ -310,7 +299,6 @@ function MapPicker({
     }
   }, [onChange, waypoints.length])
 
-  // Marqueurs + bounds
   React.useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -332,9 +320,7 @@ function MapPicker({
         const pos = marker.getLngLat()
         const next = [...waypoints]
         const newLabel =
-          (await reverseGeocode(pos.lng, pos.lat, MAPBOX_TOKEN)) ||
-          next[idx].label ||
-          autoLabel(idx)
+          (await reverseGeocode(pos.lng, pos.lat, MAPBOX_TOKEN)) || next[idx].label || autoLabel(idx)
         next[idx] = { ...next[idx], lat: pos.lat, lng: pos.lng, label: newLabel }
         onChange(next)
       })
@@ -352,14 +338,12 @@ function MapPicker({
     }
   }, [waypoints, onChange])
 
-  // Route (Directions API) whenever waypoints change
   React.useEffect(() => {
     ;(async () => {
       const map = mapRef.current
       if (!map) return
 
       if (waypoints.length < 2) {
-        // clear route if exists
         if (map.getSource(routeSourceId.current)) {
           (map.getSource(routeSourceId.current) as mapboxgl.GeoJSONSource).setData({
             type: "FeatureCollection",
@@ -376,41 +360,22 @@ function MapPicker({
 
         const data: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
           type: "FeatureCollection",
-          features: geometry
-            ? [
-                {
-                  type: "Feature",
-                  geometry,
-                  properties: {},
-                },
-              ]
-            : [],
+          features: geometry ? [{ type: "Feature", geometry, properties: {} }] : [],
         }
 
         if (!map.getSource(routeSourceId.current)) {
-          map.addSource(routeSourceId.current, {
-            type: "geojson",
-            data,
-          })
+          map.addSource(routeSourceId.current, { type: "geojson", data })
           map.addLayer({
             id: routeLayerId.current,
             type: "line",
             source: routeSourceId.current,
-            layout: {
-              "line-join": "round",
-              "line-cap": "round",
-            },
-            paint: {
-              "line-width": 5,
-              "line-color": "#2563eb",
-              "line-opacity": 0.9,
-            },
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: { "line-width": 5, "line-color": "#2563eb", "line-opacity": 0.9 },
           })
         } else {
           (map.getSource(routeSourceId.current) as mapboxgl.GeoJSONSource).setData(data)
         }
 
-        // frame route (keeps user ability to zoom out afterwards)
         if (geometry?.coordinates?.length) {
           const coords = geometry.coordinates
           const bounds = new mapboxgl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number])
@@ -418,7 +383,7 @@ function MapPicker({
           map.fitBounds(bounds, { padding: 50, maxZoom: 15, duration: 500 })
         }
       } catch {
-        // fallback: distance handled by parent (Haversine)
+        // fallback via Haversine
       }
     })()
   }, [waypoints, onRouteKmChange])
@@ -442,9 +407,7 @@ function MapPicker({
         />
         {query && (
           <div className="absolute z-20 mt-1 w-full rounded-md border bg-popover p-1 shadow">
-            {loading && (
-              <div className="px-2 py-1.5 text-sm text-muted-foreground">Recherche…</div>
-            )}
+            {loading && <div className="px-2 py-1.5 text-sm text-muted-foreground">Recherche…</div>}
             {!loading && results.length === 0 && (
               <div className="px-2 py-1.5 text-sm text-muted-foreground">Aucun résultat</div>
             )}
@@ -483,8 +446,17 @@ type Props = {
   onOpenChange: (v: boolean) => void
   editing: Reservation | null
   onSubmit: (r: Reservation) => void
-  trips?: Trip[]              // facultatif maintenant
-  buses: Bus[]                // on reçoit la liste des bus ici
+  trips?: Trip[]
+  buses: Bus[]
+}
+
+type VehicleType = "hiace" | "coaster"
+type EventType = "none" | "marriage" | "funeral" | "church"
+
+type QuoteResponse = {
+  currency: string
+  client_payable: number
+  bus_payable: number
 }
 
 export default function AddEditReservationDialog({
@@ -498,9 +470,14 @@ export default function AddEditReservationDialog({
   const [form, setForm] = React.useState<Partial<Reservation>>({})
   const [waypoints, setWaypoints] = React.useState<Waypoint[]>([])
   const [busIds, setBusIds] = React.useState<string[]>([])
-  const [routeKm, setRouteKm] = React.useState<number | null>(null) // distance depuis Directions
+  const [routeKm, setRouteKm] = React.useState<number | null>(null)
 
-  // Options bus: depuis buses (label = plaque)
+  // Pricing inputs/state (UI moved under "Détails de la réservation")
+  const [vehicleType, setVehicleType] = React.useState<VehicleType>("hiace")
+  const [eventType, setEventType] = React.useState<EventType>("none")
+  const [quoting, setQuoting] = React.useState(false)
+
+  // Options bus
   const busOptions = React.useMemo<MultiSelectOption[]>(() => {
     const uniq: Record<string, boolean> = {}
     return (buses ?? [])
@@ -549,18 +526,53 @@ export default function AddEditReservationDialog({
     })
   }
 
-  // Fallback Haversine si pas de route calculée
   const havKm = React.useMemo(() => {
     return Math.round(totalPathKm(waypoints.map((w) => ({ lat: w.lat, lng: w.lng }))) * 100) / 100
   }, [waypoints])
 
   const distanceKmDisplay = routeKm ?? havKm
+  const busCount = busIds.length || 1
+
+  /* --------------------------- Pricing integration -------------------------- */
+  React.useEffect(() => {
+    let cancel = false
+    const canQuote =
+      vehicleType &&
+      eventType !== undefined &&
+      Number.isFinite(distanceKmDisplay) &&
+      (distanceKmDisplay ?? 0) >= 0 &&
+      busCount >= 1
+
+    if (!canQuote) return
+
+    const t = setTimeout(async () => {
+      setQuoting(true)
+      try {
+        const payload = {
+          vehicle_type: vehicleType,
+          distance_km: Number(distanceKmDisplay ?? 0),
+          event_type: eventType,
+          buses: busCount,
+        }
+        const res = await api.post<QuoteResponse, typeof payload>("/quote", payload)
+        if (cancel) return
+        setField("priceTotal", res.data.client_payable as any)
+      } catch (e: any) {
+        if (!cancel) toast.error(e?.message ?? "Échec du calcul du tarif.")
+      } finally {
+        if (!cancel) setQuoting(false)
+      }
+    }, 400)
+
+    return () => {
+      cancel = true
+      clearTimeout(t)
+    }
+  }, [vehicleType, eventType, distanceKmDisplay, busCount]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSubmit() {
     const id = editing?.id ?? (crypto.randomUUID() as Reservation["id"])
-    const code =
-      editing?.code ??
-      `BZV-${String(Math.floor(Math.random() * 1000000)).padStart(6, "0")}`
+    const code = editing?.code ?? `BZV-${String(Math.floor(Math.random() * 1000000)).padStart(6, "0")}`
 
     const seats = Number(form.seats ?? 1)
     const priceTotal = Number(form.priceTotal ?? 0)
@@ -617,11 +629,11 @@ export default function AddEditReservationDialog({
         <DialogHeader className="px-6 pt-6">
           <DialogTitle>{editing ? "Modifier la réservation" : "Ajouter une réservation"}</DialogTitle>
           <DialogDescription>
-            Organisez l’itinéraire (carte), assignez les bus (plaques), puis renseignez les détails du passager.
+            Organisez l’itinéraire (carte), assignez les bus, puis renseignez les détails du passager.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Corps scrollable */}
+        {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 pb-2">
           {/* Itinéraire & Carte */}
           <div className="space-y-3 py-4">
@@ -643,7 +655,7 @@ export default function AddEditReservationDialog({
             </div>
 
             {!MAPBOX_TOKEN && (
-              <EnvAlert message="Clé Mapbox manquante. Ajoutez VITE_MAPBOX_TOKEN dans votre fichier .env puis redémarrez le serveur (npm run dev). La carte sera activée une fois la clé détectée." />
+              <EnvAlert message="Clé Mapbox manquante. Ajoutez VITE_MAPBOX_TOKEN dans votre fichier .env puis redémarrez le serveur." />
             )}
 
             {MAPBOX_TOKEN ? (
@@ -751,10 +763,11 @@ export default function AddEditReservationDialog({
 
           <Separator />
 
-          {/* Détails réservation */}
+          {/* Détails réservation (includes vehicle/event + total input group) */}
           <div className="space-y-3 py-4">
             <h3 className="text-sm font-medium text-muted-foreground">Détails de la réservation</h3>
             <div className="grid gap-4 sm:grid-cols-2">
+              {/* Seats */}
               <div className="grid gap-1.5">
                 <Label>Sièges</Label>
                 <Input
@@ -764,15 +777,53 @@ export default function AddEditReservationDialog({
                   onChange={(e) => setField("seats", Number(e.target.value) as any)}
                 />
               </div>
+
+              {/* Vehicle type */}
               <div className="grid gap-1.5">
-                <Label>Total (FCFA)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.priceTotal ?? 0}
-                  onChange={(e) => setField("priceTotal", Number(e.target.value) as any)}
-                />
+                <Label>Type de véhicule</Label>
+                <select
+                  className="h-9 rounded-md border bg-background px-3 text-sm capitalize"
+                  value={vehicleType}
+                  onChange={(e) => setVehicleType(e.target.value as VehicleType)}
+                >
+                  <option value="hiace">hiace</option>
+                  <option value="coaster">coaster</option>
+                </select>
               </div>
+
+              {/* Event type */}
+              <div className="grid gap-1.5">
+                <Label>Évènement</Label>
+                <select
+                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                  value={eventType}
+                  onChange={(e) => setEventType(e.target.value as EventType)}
+                >
+                  <option value="none">Aucun</option>
+                  <option value="marriage">Mariage</option>
+                  <option value="funeral">Funérailles</option>
+                  <option value="church">Église</option>
+                </select>
+              </div>
+
+              {/* Total (editable) with input group */}
+              <div className="grid gap-1.5">
+                <Label>Total</Label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.priceTotal ?? 0}
+                    onChange={(e) => setField("priceTotal", Number(e.target.value) as any)}
+                    className="pr-16"
+                  />
+                  <div className="pointer-events-none absolute inset-y-0 right-0 grid w-16 place-items-center text-xs text-muted-foreground">
+                    FCFA
+                  </div>
+                </div>
+              </div>
+
+              {/* Status */}
               <div className="grid gap-1.5 sm:col-span-2">
                 <Label>Statut</Label>
                 <div className="grid grid-cols-3 gap-2">
@@ -792,7 +843,6 @@ export default function AddEditReservationDialog({
               </div>
             </div>
           </div>
-
         </div>
 
         {/* Footer */}
@@ -800,7 +850,9 @@ export default function AddEditReservationDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
-          <Button onClick={handleSubmit}>{editing ? "Enregistrer" : "Ajouter"}</Button>
+          <Button onClick={handleSubmit} disabled={quoting}>
+            {editing ? "Enregistrer" : "Ajouter"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -1,4 +1,11 @@
-import { IconTrendingUp, IconTrendingDown, IconBus, IconUsers, IconCash, IconStar } from "@tabler/icons-react"
+import {
+  IconTrendingUp,
+  IconTrendingDown,
+  IconCalendarEvent,
+  IconUsers,
+  IconCash,
+  IconBuilding,
+} from "@tabler/icons-react"
 
 import { Badge } from "@/components/ui/badge"
 import {
@@ -13,91 +20,99 @@ import {
 export function SectionCards() {
   return (
     <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-      {/* Total Bookings */}
-      <Card className="@container/card">
+      {/* Réservations totales */}
+      <Card className="@container/card" data-slot="card">
         <CardHeader>
-          <CardDescription>Total Bookings</CardDescription>
+          <CardDescription>Réservations totales (30 derniers jours)</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            3,245
+            3 245
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
               <IconTrendingUp className="size-4" />
-              +8.2%
+              +8,2 %
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="flex gap-2 font-medium">
-            Increasing weekly bookings <IconBus className="size-4" />
+            Réservations confirmées <IconUsers className="size-4" />
           </div>
-          <div className="text-muted-foreground">Compared to last 30 days</div>
+          <div className="text-muted-foreground">
+            par rapport aux 30 jours précédents
+          </div>
         </CardFooter>
       </Card>
 
-      {/* Active Routes */}
-      <Card className="@container/card">
+      {/* Réservations planifiées */}
+      <Card className="@container/card" data-slot="card">
         <CardHeader>
-          <CardDescription>Active Routes</CardDescription>
+          <CardDescription>Réservations planifiées (à venir)</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            58
+            128
+          </CardTitle>
+          <CardAction>
+            <Badge variant="outline">
+              <IconTrendingUp className="size-4" />
+              +5,4 %
+            </Badge>
+          </CardAction>
+        </CardHeader>
+        <CardFooter className="flex-col items-start gap-1.5 text-sm">
+          <div className="flex gap-2 font-medium">
+            Trajets programmés pour les prochains événements <IconCalendarEvent className="size-4" />
+          </div>
+          <div className="text-muted-foreground">
+            incluant les réservations de groupe et les départs confirmés
+          </div>
+        </CardFooter>
+      </Card>
+
+      {/* Recettes brutes */}
+      <Card className="@container/card" data-slot="card">
+        <CardHeader>
+          <CardDescription>Recettes brutes (30 jours)</CardDescription>
+          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
+            12 450 000 FCFA
+          </CardTitle>
+          <CardAction>
+            <Badge variant="outline">
+              <IconTrendingUp className="size-4" />
+              +9,3 %
+            </Badge>
+          </CardAction>
+        </CardHeader>
+        <CardFooter className="flex-col items-start gap-1.5 text-sm">
+          <div className="flex gap-2 font-medium">
+            Revenus issus des réservations <IconCash className="size-4" />
+          </div>
+          <div className="text-muted-foreground">
+            avant partage avec les opérateurs partenaires
+          </div>
+        </CardFooter>
+      </Card>
+
+      {/* Partenaires et reversements */}
+      <Card className="@container/card" data-slot="card">
+        <CardHeader>
+          <CardDescription>Partenaires & reversements dus</CardDescription>
+          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
+            11 opérateurs · 6 320 000 FCFA
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
               <IconTrendingDown className="size-4" />
-              -3.4%
+              -1,2 %
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="flex gap-2 font-medium">
-            Route updates required <IconBus className="size-4" />
+            Paiements à valider cette semaine <IconBuilding className="size-4" />
           </div>
-          <div className="text-muted-foreground">Some routes inactive</div>
-        </CardFooter>
-      </Card>
-
-      {/* Total Revenue */}
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>Total Revenue</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            $84,900
-          </CardTitle>
-          <CardAction>
-            <Badge variant="outline">
-              <IconTrendingUp className="size-4" />
-              +14.2%
-            </Badge>
-          </CardAction>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="flex gap-2 font-medium">
-            Revenue growth sustained <IconCash className="size-4" />
+          <div className="text-muted-foreground">
+            selon les contrats de collaboration avec les transporteurs
           </div>
-          <div className="text-muted-foreground">Based on recent bookings</div>
-        </CardFooter>
-      </Card>
-
-      {/* Customer Satisfaction */}
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>Customer Rating</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            4.7 / 5
-          </CardTitle>
-          <CardAction>
-            <Badge variant="outline">
-              <IconTrendingUp className="size-4" />
-              +0.3
-            </Badge>
-          </CardAction>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="flex gap-2 font-medium">
-            Excellent service feedback <IconStar className="size-4" />
-          </div>
-          <div className="text-muted-foreground">From latest 1K reviews</div>
         </CardFooter>
       </Card>
     </div>

@@ -1,10 +1,12 @@
+// src/pages/Reservations.tsx
 "use client"
 
 import * as React from "react"
 import { IconPencil, IconTrash } from "@tabler/icons-react"
+import { toast } from "sonner"
+
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
-import { toast } from "sonner"
 
 import type { ColumnDef } from "@tanstack/react-table"
 import { DataTable, makeDrawerTriggerColumn } from "@/components/data-table"
@@ -13,9 +15,9 @@ import type { FilterConfig } from "@/components/data-table"
 import ImportDialog from "@/components/common/ImportDialog"
 import AddEditReservationDialog from "@/components/reservation/AddEditReservation"
 
-import type { Reservation, Trip, Payment, Bus } from "@/types"
-import { reservations as seedReservations, trips, payments } from "@/data/reservations"
-import { buses } from "@/data/buses"
+// API clients
+import reservationApi, { type UIReservation, type ReservationStatus } from "@/api/reservation"
+import busApi, { type UIBus } from "@/api/bus"
 
 /* ------------------------------- utilities -------------------------------- */
 
@@ -36,50 +38,63 @@ const shortDatetime = (iso?: string) => {
 }
 
 type PayState = "paid" | "pending" | "failed" | "none"
-function derivePaymentStatus(bookingId: string, byBooking: Map<string, Payment[]>) {
-  const list = byBooking.get(bookingId) ?? []
-  if (!list.length) return "none" as PayState
-  if (list.some((p) => p.status === "paid")) return "paid"
-  if (list.some((p) => p.status === "pending")) return "pending"
-  if (list.some((p) => p.status === "failed")) return "failed"
+// No payments API yet — default to “none”
+function derivePaymentStatus(): PayState {
   return "none"
 }
 
 /* --------------------------------- Page ----------------------------------- */
 
 export default function ReservationPage() {
-  const [rows, setRows] = React.useState<Reservation[]>(seedReservations)
+  const [rows, setRows] = React.useState<UIReservation[]>([])
   const [open, setOpen] = React.useState(false)
-  const [editing, setEditing] = React.useState<Reservation | null>(null)
+  const [editing, setEditing] = React.useState<UIReservation | null>(null)
   const [openImport, setOpenImport] = React.useState(false)
+  const [loading, setLoading] = React.useState(true)
 
-  // Map busId -> plate (label)
+  // Buses from API (for plates + dialog options)
+  const [buses, setBuses] = React.useState<UIBus[]>([])
+
+  // On mount: fetch reservations + buses
+  React.useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        setLoading(true)
+        const [resvRes, busRes] = await Promise.all([
+          reservationApi.list({ with: ["buses"], per_page: 100 }), // tune per_page if needed
+          busApi.list({ per_page: 500 }),
+        ])
+        if (!alive) return
+        setRows(resvRes.data.rows)
+        setBuses(busRes.data.rows)
+      } catch (e: any) {
+        toast.error(e?.message ?? "Échec du chargement des réservations.")
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Map busId -> plate label
   const busPlateById = React.useMemo(() => {
     const m = new Map<string, string>()
-    for (const b of buses as Bus[]) {
+    for (const b of buses) {
       if (!b?.id) continue
-      const plate = b.plate ?? b.id
-      m.set(b.id, plate)
+      m.set(String(b.id), b.plate ?? String(b.id))
     }
     return m
-  }, [])
-
-  const paymentsByBooking = React.useMemo(() => {
-    const m = new Map<string, Payment[]>()
-    for (const p of payments) {
-      const arr = m.get(p.bookingId) ?? []
-      arr.push(p)
-      m.set(p.bookingId, arr)
-    }
-    return m
-  }, [])
+  }, [buses])
 
   const searchable = {
     placeholder: "Rechercher code, passager, téléphone, départ, arrivée…",
-    fields: ["code", "passenger.name", "passenger.phone", "route.from", "route.to"] as (keyof Reservation)[],
+    fields: ["code", "passenger.name", "passenger.phone", "route.from", "route.to"] as (keyof UIReservation)[],
   }
 
-  const filters: FilterConfig<Reservation>[] = [
+  const filters: FilterConfig<UIReservation>[] = [
     {
       id: "status",
       label: "Statut réservation",
@@ -100,21 +115,21 @@ export default function ReservationPage() {
         { label: "Échoué", value: "failed" },
         { label: "Aucun", value: "none" },
       ],
-      accessor: (r) => (derivePaymentStatus(r.id, paymentsByBooking) ?? "") as string,
+      accessor: () => derivePaymentStatus(),
       defaultValue: "",
     },
   ]
 
-  const columns = React.useMemo<ColumnDef<Reservation>[]>(() => {
+  const columns = React.useMemo<ColumnDef<UIReservation>[]>(() => {
     return [
       // Drawer trigger on code
-      makeDrawerTriggerColumn<Reservation>("code", {
+      makeDrawerTriggerColumn<UIReservation>("code", {
         triggerField: "code",
         renderTitle: (r) => r.code,
         renderBody: (r) => {
-          const pstat = derivePaymentStatus(r.id, paymentsByBooking)
+          const pstat = derivePaymentStatus()
           const busPlates = (r.busIds ?? []).map((id) => busPlateById.get(id) ?? id)
-          const dist = (r as Reservation & { distanceKm?: number }).distanceKm
+          const dist = (r as UIReservation & { distanceKm?: number }).distanceKm
           return (
             <div className="grid gap-2 text-sm">
               <div className="flex items-center gap-2">
@@ -133,7 +148,7 @@ export default function ReservationPage() {
                 <span className="text-muted-foreground">Trajet</span>
                 <div>{r.route?.from ?? "—"} → {r.route?.to ?? "—"}</div>
                 <div>
-                  Date : {r.tripDate ? new Date(r.tripDate).toLocaleDateString("fr-FR") : "—"} {r.tripId ? `· Voyage #${r.tripId}` : ""}
+                  Date : {r.tripDate ? new Date(r.tripDate).toLocaleDateString("fr-FR") : "—"}
                 </div>
                 {!!dist && <div>Distance : {dist.toLocaleString("fr-FR")} km</div>}
               </div>
@@ -222,32 +237,37 @@ export default function ReservationPage() {
       {
         id: "paymentStatus",
         header: "Paiement",
-        cell: ({ row }) => {
-          const pstat = derivePaymentStatus(row.original.id, paymentsByBooking)
+        cell: () => {
+          const pstat = derivePaymentStatus()
           return <Badge variant="outline" className="px-1.5 capitalize">{pstat}</Badge>
         },
       },
     ]
-  }, [paymentsByBooking, busPlateById])
+  }, [busPlateById])
 
-  function renderRowActions(r: Reservation) {
+  /* --------------------------- Row action handlers -------------------------- */
+
+  function renderRowActions(r: UIReservation) {
     const isCancelled = r.status === "cancelled"
     return (
       <>
-        <DropdownMenuItem
-          onClick={() => {
-            setEditing(r)
-            setOpen(true)
-          }}
-        >
+        <DropdownMenuItem onClick={() => { setEditing(r); setOpen(true) }}>
           <IconPencil className="mr-2 h-4 w-4" /> Modifier
         </DropdownMenuItem>
 
         {!isCancelled && (
           <DropdownMenuItem
-            onClick={() => {
-              setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: "cancelled" } : x)))
-              toast("Réservation annulée")
+            onClick={async () => {
+              // optimistic status change
+              const prev = rows
+              setRows((xs) => xs.map((x) => (x.id === r.id ? { ...x, status: "cancelled" } as UIReservation : x)))
+              try {
+                await reservationApi.setStatus(r.id, "cancelled")
+                toast("Réservation annulée")
+              } catch (e: any) {
+                setRows(prev)
+                toast.error(e?.message ?? "Échec de l’annulation.")
+              }
             }}
           >
             Annuler
@@ -258,9 +278,17 @@ export default function ReservationPage() {
 
         <DropdownMenuItem
           className="text-rose-600"
-          onClick={() => {
-            setRows((prev) => prev.filter((x) => x.id !== r.id))
-            toast("Réservation supprimée")
+          onClick={async () => {
+            // optimistic delete (soft-delete)
+            const prev = rows
+            setRows((xs) => xs.filter((x) => x.id !== r.id))
+            try {
+              await reservationApi.remove(r.id)
+              toast("Réservation supprimée")
+            } catch (e: any) {
+              setRows(prev)
+              toast.error(e?.message ?? "Échec de la suppression.")
+            }
           }}
         >
           <IconTrash className="mr-2 h-4 w-4" /> Supprimer
@@ -278,20 +306,30 @@ export default function ReservationPage() {
         </div>
       </div>
 
-      <DataTable<Reservation>
+      <DataTable<UIReservation>
         data={rows}
         columns={columns}
         getRowId={(r) => r.id}
         searchable={searchable}
         filters={filters}
+        loading={loading}
         onAdd={() => { setEditing(null); setOpen(true) }}
         addLabel="Ajouter"
         onImport={() => setOpenImport(true)}
         importLabel="Importer"
         renderRowActions={renderRowActions}
         drawer={{ triggerField: "code" }}
-        onDeleteSelected={(selected) => {
-          setRows((prev) => prev.filter((x) => !selected.some((s) => s.id === x.id)))
+        onDeleteSelected={async (selected) => {
+          if (selected.length === 0) return
+          const prev = rows
+          setRows((xs) => xs.filter((x) => !selected.some((s) => s.id === x.id)))
+          try {
+            await Promise.all(selected.map((s) => reservationApi.remove(s.id)))
+            toast(`${selected.length} réservation(s) supprimée(s).`)
+          } catch (e: any) {
+            setRows(prev)
+            toast.error("Échec sur la suppression groupée.")
+          }
         }}
       />
 
@@ -299,22 +337,44 @@ export default function ReservationPage() {
         open={open}
         onOpenChange={setOpen}
         editing={editing}
-        onSubmit={(res) => {
-          setRows((prev) => {
-            const i = prev.findIndex((x) => x.id === res.id)
-            if (i === -1) return [res, ...prev]
-            const next = [...prev]
-            next[i] = { ...prev[i], ...res }
-            return next
-          })
-          setEditing(null)
+        onSubmit={async (res) => {
+          if (editing) {
+            // optimistic update
+            const prev = rows
+            setRows((xs) => xs.map((x) => (x.id === res.id ? { ...x, ...res } : x)))
+            try {
+              const apiRes = await reservationApi.update(res.id, res)
+              // server is source of truth (may compute fields)
+              setRows((xs) => xs.map((x) => (x.id === res.id ? apiRes.data : x)))
+              toast("Réservation mise à jour.")
+            } catch (e: any) {
+              setRows(prev)
+              toast.error(e?.message ?? "Échec de la mise à jour.")
+            } finally {
+              setEditing(null)
+            }
+          } else {
+            // optimistic add with temp id
+            const tempId = res.id
+            const temp = { ...res }
+            setRows((xs) => [temp, ...xs])
+            try {
+              const apiRes = await reservationApi.create(res)
+              // swap temp by server row
+              setRows((xs) => xs.map((x) => (x.id === tempId ? apiRes.data : x)))
+              toast("Réservation ajoutée.")
+            } catch (e: any) {
+              setRows((xs) => xs.filter((x) => x.id !== tempId))
+              toast.error(e?.message ?? "Échec de la création.")
+            }
+          }
         }}
-        trips={trips as Trip[]}
-        buses={buses as Bus[]}
+        // The dialog only needs id + plate; we pass the full list anyway
+        trips={[]} // no trips API wired yet; keep empty array
+        buses={buses as unknown as any[]} // used for MultiSelect (id+plate)
       />
 
-      {/* Import dialog unchanged from your previous version (kept for brevity) */}
-      <ImportDialog<Reservation>
+      <ImportDialog<UIReservation>
         open={openImport}
         onOpenChange={setOpenImport}
         title="Importer des réservations"
@@ -328,13 +388,12 @@ export default function ReservationPage() {
           { key: "passenger.phone", label: "Passager · Téléphone", required: true },
           { key: "passenger.email", label: "Passager · Email" },
           { key: "seats", label: "Sièges", required: true },
-          { key: "busIds", label: "Bus IDs (b1,b3,…)" },
+          { key: "busIds", label: "Bus IDs (uuid,uuid,…)" },
           { key: "priceTotal", label: "Total (FCFA)" },
           { key: "status", label: "Statut (pending/confirmed/cancelled)" },
-          { key: "tripId", label: "Voyage ID (optionnel)" },
         ]}
         sampleHeaders={[
-          "code","tripDate","from","to","passenger_name","passenger_phone","passenger_email","seats","busIds","priceTotal","status","tripId",
+          "code","tripDate","from","to","passenger_name","passenger_phone","passenger_email","seats","busIds","priceTotal","status",
         ]}
         transform={(raw) => {
           const g = (k: string) => {
@@ -360,9 +419,8 @@ export default function ReservationPage() {
           let status = String(raw.status ?? "pending").toLowerCase()
           if (!["pending", "confirmed", "cancelled"].includes(status)) status = "pending"
           const busIdsVal = raw.busIds ? String(raw.busIds).split(",").map((s: string) => s.trim()).filter(Boolean) : []
-          const tripId = raw.tripId ? String(raw.tripId).trim() : undefined
-          const res: Reservation = {
-            id: crypto.randomUUID() as Reservation["id"],
+          const res: UIReservation = {
+            id: crypto.randomUUID(),
             code,
             tripDate,
             route: { from, to },
@@ -370,29 +428,29 @@ export default function ReservationPage() {
             seats: isNaN(seatsNum) ? 1 : seatsNum,
             busIds: busIdsVal,
             priceTotal: isNaN(totalNum) ? 0 : totalNum,
-            status: status as Reservation["status"],
+            status: status as ReservationStatus,
             createdAt: new Date().toISOString(),
-            tripId,
           }
           return res
         }}
-        onConfirm={(imported) => {
-          setRows((prev) => {
-            const key = (r: Reservation) => r.code ? `code:${r.code}` : `npd:${(r.passenger?.name ?? "").toLowerCase()}|${r.passenger?.phone}|${r.tripDate}`
-            const existing = new Map(prev.map((r) => [key(r), true]))
-            const merged: Reservation[] = [...prev]
-            for (const nr of imported) {
-              const k = key(nr)
-              if (existing.has(k)) {
-                const idx = merged.findIndex((x) => key(x) === k)
-                if (idx >= 0) merged[idx] = { ...merged[idx], ...nr }
-              } else {
-                merged.unshift(nr)
-              }
-            }
-            return merged
-          })
-          toast.success(`Import réussi (${imported.length} réservation${imported.length > 1 ? "s" : ""}).`)
+        onConfirm={async (imported) => {
+          // Optimistic batch add, then POST each
+          const prev = rows
+          setRows((xs) => [...imported, ...xs])
+          try {
+            const created = await Promise.all(imported.map((r) => reservationApi.create(r).then((x) => x.data)))
+            // Replace temps by server rows (match by code+tripDate+phone as fallback)
+            const key = (r: UIReservation) =>
+              r.code ? `code:${r.code}` : `npd:${(r.passenger?.name ?? "").toLowerCase()}|${r.passenger?.phone}|${r.tripDate}`
+            setRows((xs) => {
+              const withoutTemps = xs.filter((x) => !imported.some((t) => key(t) === key(x)))
+              return [...created, ...withoutTemps]
+            })
+            toast.success(`Import réussi (${created.length} réservation${created.length > 1 ? "s" : ""}).`)
+          } catch (e: any) {
+            setRows(prev)
+            toast.error("Échec de l'import.")
+          }
         }}
       />
     </div>

@@ -1,3 +1,4 @@
+// src/components/bus/AddEditBusDialog.tsx
 "use client"
 
 import * as React from "react"
@@ -26,7 +27,9 @@ import {
 } from "@/components/ui/command"
 import { toast } from "sonner"
 
-import type { Bus, BusStatus, Person } from "@/types"
+import type { UIBus } from "@/api/bus"
+import type { Person } from "@/api/people"
+import type { BusStatus, BusType } from "@/api/bus"
 import { cn } from "@/lib/utils"
 
 /** Options prédéfinies */
@@ -38,9 +41,8 @@ const MODEL_OPTIONS = [
   "Yutong ZK",
 ] as const
 
-const TYPE_OPTIONS: NonNullable<Bus["type"]>[] = ["standard", "luxe", "minibus"] as any
-// NOTE: If you prefer keeping type values in English in the DB, map labels to values in submit().
-
+// Must match backend values
+const TYPE_OPTIONS: BusType[] = ["hiace", "coaster"]
 const PROVIDERS = ["AXA", "Jubilee", "Britam", "CIC", "APA"] as const
 
 type Id = Person["id"]
@@ -48,8 +50,8 @@ type Id = Person["id"]
 export type AddEditBusDialogProps = {
   open: boolean
   onOpenChange: (v: boolean) => void
-  onSubmit: (bus: Bus) => void
-  editing?: Bus | null
+  onSubmit: (bus: Partial<UIBus> & { id?: string }) => void
+  editing?: UIBus | null
   people?: Person[]
 }
 
@@ -60,16 +62,14 @@ export default function AddEditBusDialog({
   editing,
   people = [],
 }: AddEditBusDialogProps) {
-//   const { toast } = useToast()
-
   // ------- État (Bus) -------
   const [plate, setPlate] = React.useState("")
   const [capacity, setCapacity] = React.useState<number>(49)
   const [status, setStatus] = React.useState<BusStatus>("active")
-  const [type, setType] = React.useState<Bus["type"]>("standard")
+  const [type, setType] = React.useState<BusType>("hiace")
   const [model, setModel] = React.useState<string>(MODEL_OPTIONS[0])
   const [year, setYear] = React.useState<number | "">("")
-  const [mileage, setMileage] = React.useState<number | "">("")
+  const [mileageKm, setMileageKm] = React.useState<number | "">("")
   const [operatorId, setOperatorId] = React.useState<Id | "">("")
   const [assignedDriverId, setAssignedDriverId] = React.useState<Id | "">("")
   const [lastServiceDate, setLastServiceDate] = React.useState<string>("")
@@ -81,7 +81,7 @@ export default function AddEditBusDialog({
   const [insValidUntil, setInsValidUntil] = React.useState<string>("")
 
   // Listes
-  const owners = React.useMemo(() => people.filter((p) => p.role === "owner"), [people])
+  const owners = React.useMemo(() => people.filter((p) => p.role === "owner" || p.role === "admin"), [people])
   const drivers = React.useMemo(() => people.filter((p) => p.role === "driver"), [people])
 
   // Hydratation en édition
@@ -89,38 +89,33 @@ export default function AddEditBusDialog({
     if (editing) {
       setPlate(editing.plate ?? "")
       setCapacity(editing.capacity ?? 49)
-      setStatus(editing.status ?? "active")
-      setType((editing.type as any) ?? "standard")
+      setStatus((editing.status as BusStatus) ?? "active")
+      setType((editing.type as BusType) ?? "hiace")
       setModel(editing.model ?? MODEL_OPTIONS[0])
       setYear(editing.year ?? "")
-      setMileage(editing.mileage ?? "")
-      setOperatorId(editing.operatorId ?? "")
-      setAssignedDriverId(editing.assignedDriverId ?? "")
+      setMileageKm(editing.mileageKm ?? "")
+      setOperatorId((editing.operatorId as Id | undefined) ?? "")
+      setAssignedDriverId((editing.assignedDriverId as Id | undefined) ?? "")
       setLastServiceDate(editing.lastServiceDate ?? "")
 
-      if (editing.insurance) {
-        setHasInsurance(true)
-        setInsProvider(editing.insurance.provider ?? "")
-        setInsPolicy(editing.insurance.policyNumber ?? "")
-        setInsValidUntil(editing.insurance.validUntil ?? "")
-      } else {
-        setHasInsurance(false)
-        setInsProvider("")
-        setInsPolicy("")
-        setInsValidUntil("")
-      }
+      const hasAnyInsurance = Boolean(
+        editing.insuranceProvider || editing.insurancePolicyNumber || editing.insuranceValidUntil
+      )
+      setHasInsurance(hasAnyInsurance)
+      setInsProvider(editing.insuranceProvider ?? "")
+      setInsPolicy(editing.insurancePolicyNumber ?? "")
+      setInsValidUntil(editing.insuranceValidUntil ?? "")
     } else {
       setPlate("")
       setCapacity(49)
       setStatus("active")
-      setType("standard")
+      setType("hiace")
       setModel(MODEL_OPTIONS[0])
       setYear("")
-      setMileage("")
+      setMileageKm("")
       setOperatorId("")
       setAssignedDriverId("")
       setLastServiceDate("")
-
       setHasInsurance(false)
       setInsProvider("")
       setInsPolicy("")
@@ -128,73 +123,68 @@ export default function AddEditBusDialog({
     }
   }, [editing])
 
-  // -------------------- Intégration API (Laravel - plan) --------------------
-  const USE_API = false
-  const BASE_URL = "http://localhost:8000"
-
-  async function saveBusToApi(payload: Bus) {
-    const isEdit = Boolean(editing?.id)
-    const url = isEdit ? `${BASE_URL}/api/buses/${payload.id}` : `${BASE_URL}/api/buses`
-    const method = isEdit ? "PUT" : "POST"
-
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      credentials: "include",
-    })
-
-    if (!res.ok) throw new Error(await res.text().catch(() => "Requête échouée"))
-    return res.json()
+  function isIsoDate(v: string) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(v)
+  }
+  function asNumberOrUndefined(v: unknown) {
+    if (v === "" || v === undefined || v === null) return undefined
+    const n = Number(v)
+    return Number.isFinite(n) ? n : undefined
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
 
-    // Si vous voulez garder les valeurs de type en anglais côté API/DB, mappez ici:
-    const normalizedType =
-      type === ("luxe" as string) ? ("luxury" as Bus["type"]) : (type as Bus["type"])
+    // Client-side guard: insurance_valid_until >= last_service_date (if both present)
+    if (insValidUntil && lastServiceDate) {
+      const a = new Date(insValidUntil)
+      const b = new Date(lastServiceDate)
+      if (a < b) {
+        toast.error("La date de validité d’assurance doit être postérieure ou égale à la dernière révision.")
+        return
+      }
+    }
 
-    const bus: Bus = {
-      id: editing?.id ?? (crypto.randomUUID() as unknown as Bus["id"]),
+    const payload: Partial<UIBus> & { id?: string } = {
+      ...(editing?.id ? { id: editing.id } : {}),
       plate: plate.trim(),
       capacity: Number(capacity),
       status,
-      type: normalizedType,
+      type,
       model: model.trim() || undefined,
       year: year === "" ? undefined : Number(year),
-      mileage: mileage === "" ? undefined : Number(mileage),
-      operatorId: operatorId || undefined,
-      assignedDriverId: assignedDriverId || undefined,
-      lastServiceDate: lastServiceDate || undefined,
+      mileageKm: mileageKm === "" ? undefined : Number(mileageKm),
+      // IDs must be numbers for the backend exists() rule; we convert here so the api layer can pass numbers through
+      operatorId: asNumberOrUndefined(operatorId),
+      assignedDriverId: asNumberOrUndefined(assignedDriverId),
+      // Dates must be ISO or omitted
+      lastServiceDate: lastServiceDate && isIsoDate(lastServiceDate) ? lastServiceDate : undefined,
+      // Insurance (flat fields in API)
       ...(hasInsurance &&
       (insProvider.trim() || insPolicy.trim() || insValidUntil.trim())
         ? {
-            insurance: {
-              provider: insProvider.trim(),
-              policyNumber: insPolicy.trim(),
-              validUntil: insValidUntil.trim(),
-            },
+            insuranceProvider: insProvider.trim() || undefined,
+            insurancePolicyNumber: insPolicy.trim() || undefined,
+            insuranceValidUntil: insValidUntil && isIsoDate(insValidUntil) ? insValidUntil : undefined,
           }
-        : {}),
-      ...(editing ? editing : {}),
+        : {
+            insuranceProvider: undefined,
+            insurancePolicyNumber: undefined,
+            insuranceValidUntil: undefined,
+          }),
     }
 
-    try {
-      if (USE_API) {
-        const saved = await saveBusToApi(bus)
-        onSubmit(saved as Bus)
-      } else {
-        onSubmit(bus)
-      }
-
-      toast(editing ? "Bus mis à jour" : "Bus ajouté")
-
-      onOpenChange(false)
-    } catch (err) {
-      console.error("Échec de l’enregistrement du bus:", err)
-      toast("Échec de l’enregistrement du bus. Réessayez.")
+    if (!payload.plate) {
+      toast.error("L'immatriculation est obligatoire.")
+      return
     }
+    if (!payload.capacity || payload.capacity < 1) {
+      toast.error("La capacité doit être un nombre positif.")
+      return
+    }
+
+    onSubmit(payload)
+    onOpenChange(false)
   }
 
   // -------------------- Helpers UI --------------------
@@ -303,7 +293,7 @@ export default function AddEditBusDialog({
         placeholder={placeholder}
         getLabel={(id) => {
           const p = people.find((x) => x.id === id)
-          return p ? `${p.name} — ${p.phone}` : String(id)
+          return p ? `${p.name} - ${p.phone ?? "-"}` : String(id)
         }}
       />
     )
@@ -402,12 +392,12 @@ export default function AddEditBusDialog({
                   <select
                     id="type"
                     className="h-9 rounded-md border bg-background px-3 text-sm capitalize"
-                    value={type ?? "standard"}
-                    onChange={(e) => setType(e.target.value as Bus["type"])}
+                    value={type ?? "hiace"}
+                    onChange={(e) => setType(e.target.value as BusType)}
                   >
                     {TYPE_OPTIONS.map((t) => (
-                      <option key={t} value={t as any} className="capitalize">
-                        {String(t)}
+                      <option key={t} value={t} className="capitalize">
+                        {t}
                       </option>
                     ))}
                   </select>
@@ -455,14 +445,14 @@ export default function AddEditBusDialog({
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="mileage">Kilométrage</Label>
+                  <Label htmlFor="mileageKm">Kilométrage</Label>
                   <div className="relative">
                     <Input
-                      id="mileage"
+                      id="mileageKm"
                       type="number"
                       min={0}
-                      value={mileage}
-                      onChange={(e) => setMileage(e.target.value === "" ? "" : Number(e.target.value))}
+                      value={mileageKm}
+                      onChange={(e) => setMileageKm(e.target.value === "" ? "" : Number(e.target.value))}
                       placeholder="120000"
                       className="pr-10"
                     />
