@@ -97,6 +97,7 @@ export type DataTableProps<T extends object> = {
   drawer?: DrawerConfig<T>
   /** bulk delete handler; called after user confirms */
   onDeleteSelected?: (rows: T[]) => void
+  loading?: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
