@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconPlus, IconPencil, IconTrash, IconUpload } from "@tabler/icons-react"
+import { IconPencil, IconTrash } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -108,9 +108,9 @@ function AddEditStaffDialog({ open, onOpenChange, editing, onSubmit }: AddEditSt
     try {
       const dataUrl = await fileToDataURL(file)
       set("avatar", dataUrl as any)
-      toast.success("Avatar ajouté.")
+      toast("Avatar ajouté.")
     } catch (err: any) {
-      toast.error(err?.message ?? "Échec du chargement de l'avatar.")
+      toast(err?.message ?? "Échec du chargement de l'avatar.")
     } finally {
       setUploading(false)
       // reset input value so selecting same file again triggers change
@@ -128,17 +128,17 @@ function AddEditStaffDialog({ open, onOpenChange, editing, onSubmit }: AddEditSt
       email: form.email ? String(form.email).trim() : undefined,
       password: form.password ? String(form.password) : undefined,
       avatar: form.avatar ? String(form.avatar) : undefined,
-      createdAt: editing?.createdAt ?? (undefined as any),
+      createdAt: editing?.createdAt ?? (undefined as undefined),
     }
 
     if (!payload.name || !payload.phone) {
-      toast.error("Nom et téléphone sont obligatoires.")
+      toast("Nom et téléphone sont obligatoires.")
       return
     }
 
     onSubmit(payload)
     onOpenChange(false)
-    toast.success(editing ? "Membre mis à jour." : "Membre ajouté.")
+    toast(editing ? "Membre mis à jour." : "Membre ajouté.")
   }
 
   return (
@@ -172,7 +172,7 @@ function AddEditStaffDialog({ open, onOpenChange, editing, onSubmit }: AddEditSt
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => set("avatar", undefined as any)}
+                      onClick={() => set("avatar", undefined as undefined)}
                     >
                       Retirer
                     </Button>
@@ -186,7 +186,7 @@ function AddEditStaffDialog({ open, onOpenChange, editing, onSubmit }: AddEditSt
                     id="avatarUrl"
                     placeholder="https://…"
                     value={form.avatar ?? ""}
-                    onChange={(e) => set("avatar", e.target.value as any)}
+                    onChange={(e) => set("avatar", e.target.value as string)}
                   />
                   <Button
                     type="button"
@@ -194,7 +194,7 @@ function AddEditStaffDialog({ open, onOpenChange, editing, onSubmit }: AddEditSt
                     size="sm"
                     onClick={() => {
                       if (!form.avatar) return
-                      toast.success("URL d’avatar enregistrée.")
+                      toast("URL d’avatar enregistrée.")
                     }}
                   >
                     Utiliser
@@ -206,15 +206,15 @@ function AddEditStaffDialog({ open, onOpenChange, editing, onSubmit }: AddEditSt
 
           <div className="grid gap-1.5">
             <Label>Nom</Label>
-            <Input value={form.name ?? ""} onChange={(e) => set("name", e.target.value as any)} />
+            <Input value={form.name ?? ""} onChange={(e) => set("name", e.target.value as string)} />
           </div>
           <div className="grid gap-1.5">
             <Label>Téléphone</Label>
-            <Input value={form.phone ?? ""} onChange={(e) => set("phone", e.target.value as any)} />
+            <Input value={form.phone ?? ""} onChange={(e) => set("phone", e.target.value as string)} />
           </div>
           <div className="grid gap-1.5">
             <Label>Email (optionnel)</Label>
-            <Input value={form.email ?? ""} onChange={(e) => set("email", e.target.value as any)} />
+            <Input value={form.email ?? ""} onChange={(e) => set("email", e.target.value as string)} />
           </div>
           <div className="grid gap-1.5">
             <Label>Rôle</Label>
@@ -253,7 +253,7 @@ export default function StaffPage() {
 
   const searchable = {
     placeholder: "Rechercher nom, téléphone, email…",
-    fields: ["name", "phone", "email"] as const,
+    fields: ["name", "phone", "email"] as  (keyof Staff)[],
   }
 
   const filters: FilterConfig<Staff>[] = [
@@ -355,11 +355,7 @@ export default function StaffPage() {
           className="text-rose-600"
           onClick={() => {
             setRows((prev) => prev.filter((x) => x.id !== s.id))
-            toast({
-              variant: "destructive",
-              title: "Membre supprimé",
-              description: `Nom : ${s.name}`,
-            })
+            toast("Membre supprimé")
           }}
         >
           <IconTrash className="mr-2 h-4 w-4" /> Supprimer
@@ -430,7 +426,7 @@ export default function StaffPage() {
         ]}
         sampleHeaders={["name", "role", "phone", "email", "avatar"]}
         transform={(raw) => {
-          const norm = (v: any) => (typeof v === "string" ? v.trim() : v)
+          const norm = (v: string | undefined) => (typeof v === "string" ? v.trim() : v)
           const name = String(norm(raw.name) ?? "")
           const phone = String(norm(raw.phone) ?? "")
           if (!name || !phone) return null
@@ -449,7 +445,7 @@ export default function StaffPage() {
             email: email ? String(email) : undefined,
             avatar: avatar ? String(avatar) : undefined,
             password: undefined,
-            createdAt: undefined as any,
+            createdAt: undefined as string | undefined,
           }
           return staff
         }}
@@ -470,7 +466,7 @@ export default function StaffPage() {
             }
             return merged
           })
-          toast.success(`Import réussi (${imported.length} membre${imported.length > 1 ? "s" : ""}).`)
+          toast(`Import réussi (${imported.length} membre${imported.length > 1 ? "s" : ""}).`)
         }}
       />
     </div>

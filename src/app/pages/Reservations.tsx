@@ -76,7 +76,7 @@ export default function ReservationPage() {
 
   const searchable = {
     placeholder: "Rechercher code, passager, téléphone, départ, arrivée…",
-    fields: ["code", "passenger.name", "passenger.phone", "route.from", "route.to"] as  (keyof Reservation)[],
+    fields: ["code", "passenger.name", "passenger.phone", "route.from", "route.to"] as (keyof Reservation)[],
   }
 
   const filters: FilterConfig<Reservation>[] = [

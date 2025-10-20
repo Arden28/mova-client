@@ -153,7 +153,7 @@ export default function AddEditBusDialog({
 
     // Si vous voulez garder les valeurs de type en anglais côté API/DB, mappez ici:
     const normalizedType =
-      type === ("luxe" as any) ? ("luxury" as Bus["type"]) : (type as Bus["type"])
+      type === ("luxe" as string) ? ("luxury" as Bus["type"]) : (type as Bus["type"])
 
     const bus: Bus = {
       id: editing?.id ?? (crypto.randomUUID() as unknown as Bus["id"]),
@@ -188,19 +188,12 @@ export default function AddEditBusDialog({
         onSubmit(bus)
       }
 
-      toast({
-        title: editing ? "Bus mis à jour" : "Bus ajouté",
-        description: `Plaque: ${bus.plate}`,
-      })
+      toast(editing ? "Bus mis à jour" : "Bus ajouté")
 
       onOpenChange(false)
     } catch (err) {
       console.error("Échec de l’enregistrement du bus:", err)
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Échec de l’enregistrement du bus. Réessayez.",
-      })
+      toast("Échec de l’enregistrement du bus. Réessayez.")
     }
   }
 
