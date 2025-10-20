@@ -62,8 +62,9 @@ export type UIBus = {
   insurancePolicyNumber?: string
   insuranceValidUntil?: string // YYYY-MM-DD
 
-  operatorId?: string          // UUID
-  assignedDriverId?: string    // UUID
+  operatorId?: number | null
+  assignedDriverId?: number | null
+  
   operatorName?: string
   driverName?: string
 

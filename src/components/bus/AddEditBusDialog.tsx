@@ -81,7 +81,7 @@ export default function AddEditBusDialog({
   const [insValidUntil, setInsValidUntil] = React.useState<string>("")
 
   // Listes
-  const owners = React.useMemo(() => people.filter((p) => p.role === "owner" || p.role === "admin"), [people])
+  const owners = React.useMemo(() => people.filter((p) => p.role === "owner"), [people])
   const drivers = React.useMemo(() => people.filter((p) => p.role === "driver"), [people])
 
   // Hydratation en édition
