@@ -132,6 +132,11 @@ export default function AddEditBusDialog({
     return Number.isFinite(n) ? n : undefined
   }
 
+  function asStringOrUndefined(v: unknown) {
+    if (v === "" || v === undefined || v === null) return undefined
+    return String(v)
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
 
@@ -155,8 +160,8 @@ export default function AddEditBusDialog({
       year: year === "" ? undefined : Number(year),
       mileageKm: mileageKm === "" ? undefined : Number(mileageKm),
       // IDs must be numbers for the backend exists() rule; we convert here so the api layer can pass numbers through
-      operatorId: asNumberOrUndefined(operatorId),
-      assignedDriverId: asNumberOrUndefined(assignedDriverId),
+      operatorId: asStringOrUndefined(operatorId),
+      assignedDriverId: asStringOrUndefined(assignedDriverId),
       // Dates must be ISO or omitted
       lastServiceDate: lastServiceDate && isIsoDate(lastServiceDate) ? lastServiceDate : undefined,
       // Insurance (flat fields in API)
