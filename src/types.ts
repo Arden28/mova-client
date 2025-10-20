@@ -104,7 +104,7 @@ export interface Trip {
 export interface Reservation {
   id: UUID;
   code: string;
-  tripId: UUID;
+  tripId?: UUID;
   tripDate: ISODate;
   route: { from: string; to: string };
   passenger: { name: string; phone: string; email?: string };

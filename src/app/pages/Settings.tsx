@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useForm } from "react-hook-form"
+import { useForm, type FieldValues, type Resolver, type UseFormRegisterReturn } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 
@@ -429,7 +429,7 @@ function NotificationsCard({ onSaved }: { onSaved: () => void }) {
 
 function PaymentsCard({ onSaved }: { onSaved: () => void }) {
   const form = useForm<z.infer<typeof paymentsSchema>>({
-    resolver: zodResolver(paymentsSchema),
+    resolver: zodResolver(paymentsSchema) as Resolver<z.infer<typeof paymentsSchema>>,
     defaultValues: defaultPayments,
   })
 
@@ -555,7 +555,7 @@ function PaymentsCard({ onSaved }: { onSaved: () => void }) {
 
 function BookingCard({ onSaved }: { onSaved: () => void }) {
   const form = useForm<z.infer<typeof bookingSchema>>({
-    resolver: zodResolver(bookingSchema),
+    resolver: zodResolver(bookingSchema) as Resolver<z.infer<typeof bookingSchema>>,
     defaultValues: defaultBooking,
   })
 
@@ -645,8 +645,8 @@ function IntegrationsCard({ onSaved }: { onSaved: () => void }) {
                     type="button"
                     variant="outline"
                     onClick={() => {
-                      const s = "whsec_" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
-                      ;(form.setValue as any)("webhookSecret", s, { shouldDirty: true })
+                      const s = "whsec_" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+                      form.setValue("webhookSecret", s, { shouldDirty: true })
                     }}
                   >
                     Générer
@@ -724,12 +724,12 @@ function ToggleRow({
   )
 }
 
-function NumberField({
+function NumberField<T extends FieldValues>({
   label,
   reg,
 }: {
   label: string
-  reg: ReturnType<typeof useForm>["register"]
+  reg: UseFormRegisterReturn<T[keyof T]>
 }) {
   return (
     <div className="space-y-2">

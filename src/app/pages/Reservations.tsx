@@ -114,7 +114,7 @@ export default function ReservationPage() {
         renderBody: (r) => {
           const pstat = derivePaymentStatus(r.id, paymentsByBooking)
           const busPlates = (r.busIds ?? []).map((id) => busPlateById.get(id) ?? id)
-          const dist = (r as any)?.distanceKm as number | undefined
+          const dist = (r as Reservation & { distanceKm?: number }).distanceKm
           return (
             <div className="grid gap-2 text-sm">
               <div className="flex items-center gap-2">

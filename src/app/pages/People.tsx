@@ -249,7 +249,7 @@ export default function PeoplePage() {
 
   const searchable = {
     placeholder: "Rechercher nom, téléphone, email…",
-    fields: ["name", "phone", "email", "licenseNo"] as  (keyof Person)[],
+    fields: ["name", "phone", "email", "licenseNo"] as (keyof Person)[],
   }
 
   const filters: FilterConfig<Person>[] = [

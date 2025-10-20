@@ -80,7 +80,7 @@ export type DrawerConfig<T> = {
   renderFooter?: (row: T) => React.ReactNode
 }
 
-export type DataTableProps<T> = {
+export type DataTableProps<T extends object> = {
   data: T[]
   columns: ColumnDef<T>[]
   getRowId?: (row: T, index: number) => string
@@ -103,7 +103,7 @@ export type DataTableProps<T> = {
 /*                             Main DataTable                                  */
 /* -------------------------------------------------------------------------- */
 
-export function DataTable<T extends Record<string, undefined>>({
+export function DataTable<T extends object>({
   data: externalData,
   columns,
   getRowId,

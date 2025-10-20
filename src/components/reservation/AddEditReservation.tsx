@@ -598,7 +598,7 @@ export default function AddEditReservationDialog({
 
     onSubmit(payload)
     onOpenChange(false)
-    toast.success(editing ? "Réservation mise à jour." : "Réservation ajoutée.")
+    toast(editing ? "Réservation mise à jour." : "Réservation ajoutée.")
   }
 
   return (

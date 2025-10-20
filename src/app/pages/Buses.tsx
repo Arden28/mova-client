@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
 
-import type { ColumnDef } from "@tanstack/react-table"
-import { DataTable, makeDrawerTriggerColumn } from "@/components/data-table"
+import { type ColumnDef } from "@tanstack/react-table"
+import { DataTable, makeDrawerTriggerColumn, type FilterConfig } from "@/components/data-table"
 
 import AddEditBusDialog from "@/components/bus/AddEditBusDialog"
 import type { Bus, Person } from "@/types"
@@ -34,7 +34,6 @@ export default function BusesPage() {
   const [rows, setRows] = React.useState<Bus[]>(seed)
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Bus | null>(null)
-
   const [openImport, setOpenImport] = React.useState(false)
 
   // name -> id
@@ -54,7 +53,104 @@ export default function BusesPage() {
     return map
   }, [])
 
-  const  getPersonName = (id?: Person["id"]) => (id ? personById.get(id)?.name ?? "—" : "—")
+  const getPersonName = (id?: Person["id"]) => (id ? personById.get(id)?.name ?? "—" : "—")
+
+  const columns = React.useMemo<ColumnDef<Bus>[]>(() => {
+    return [
+      makeDrawerTriggerColumn<Bus>("plate", {
+        triggerField: "plate",
+        renderTitle: (b) => b.plate,
+        renderBody: (b) => (
+          <div className="grid gap-2 text-sm">
+            <div>
+              <span className="text-muted-foreground">Capacité :</span> {b.capacity}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Propriétaire :</span> {getPersonName(b.operatorId)}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Chauffeur :</span> {getPersonName(b.assignedDriverId)}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Modèle :</span> {b.model ?? "—"}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Année :</span> {b.year ?? "—"}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Statut :</span>
+              <Badge variant="outline" className="px-1.5 capitalize">
+                {b.status ?? "—"}
+              </Badge>
+            </div>
+          </div>
+        ),
+      }),
+
+      {
+        accessorKey: "capacity",
+        header: () => <div className="w-full text-right">Capacité</div>,
+        cell: ({ row }) => <div className="w-full text-right">{row.original.capacity}</div>,
+      },
+
+      {
+        id: "owner",
+        header: "Propriétaire",
+        cell: ({ row }) => (
+          <span className="block max-w-[240px] truncate">
+            {getPersonName(row.original.operatorId)}
+          </span>
+        ),
+        enableSorting: false,
+      },
+
+      {
+        id: "driver",
+        header: "Chauffeur",
+        cell: ({ row }) => (
+          <span className="block max-w-[240px] truncate">
+            {getPersonName(row.original.assignedDriverId)}
+          </span>
+        ),
+        enableSorting: false,
+      },
+
+      {
+        accessorKey: "status",
+        header: "Statut",
+        cell: ({ row }) => (
+          <Badge variant="outline" className="px-1.5 capitalize">
+            {row.original.status ?? "—"}
+          </Badge>
+        ),
+      },
+    ]
+  }, [personById])
+
+  const searchable = React.useMemo(
+    () => ({
+      placeholder: "Rechercher immatriculation, modèle…",
+      fields: ["plate", "model"] as (keyof Bus)[],
+    }),
+    []
+  )
+
+  const filters = React.useMemo<FilterConfig<Bus>[]>(() => {
+    return [
+      {
+        id: "status",
+        label: "Statut",
+        options: [
+          { label: "Actif", value: "active" },
+          { label: "Inactif", value: "inactive" },
+          { label: "Maintenance", value: "maintenance" },
+          // map accessor -> status string
+        ],
+        accessor: (b) => b.status ?? "",
+        defaultValue: "",
+      },
+    ]
+  }, [])
 
   return (
     <div className="space-y-5">
@@ -69,103 +165,10 @@ export default function BusesPage() {
 
       <DataTable<Bus>
         data={rows}
-        columns={React.useMemo<ColumnDef<Bus>[]>(() => {
-          return [
-            // Colonne principale cliquable (ouvre le tiroir)
-            makeDrawerTriggerColumn<Bus>("plate", {
-              triggerField: "plate",
-              renderTitle: (b) => b.plate,
-              renderBody: (b) => (
-                <div className="grid gap-2 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Capacité :</span> {b.capacity}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Propriétaire :</span>{" "}
-                    {getPersonName(b.operatorId)}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Chauffeur :</span>{" "}
-                    {getPersonName(b.assignedDriverId)}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Modèle :</span> {b.model ?? "—"}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Année :</span> {b.year ?? "—"}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Statut :</span>
-                    <Badge variant="outline" className="px-1.5 capitalize">
-                      {b.status ?? "—"}
-                    </Badge>
-                  </div>
-                </div>
-              ),
-            }),
-
-            // Capacité (alignée à droite)
-            {
-              accessorKey: "capacity",
-              header: () => <div className="w-full text-right">Capacité</div>,
-              cell: ({ row }) => <div className="w-full text-right">{row.original.capacity}</div>,
-            },
-
-            // Propriétaire (nom)
-            {
-              id: "owner",
-              header: "Propriétaire",
-              cell: ({ row }) => (
-                <span className="block max-w-[240px] truncate">
-                  {getPersonName(row.original.operatorId)}
-                </span>
-              ),
-              enableSorting: false,
-            },
-
-            // Chauffeur (nom)
-            {
-              id: "driver",
-              header: "Chauffeur",
-              cell: ({ row }) => (
-                <span className="block max-w-[240px] truncate">
-                  {getPersonName(row.original.assignedDriverId)}
-                </span>
-              ),
-              enableSorting: false,
-            },
-
-            // Statut
-            {
-              accessorKey: "status",
-              header: "Statut",
-              cell: ({ row }) => (
-                <Badge variant="outline" className="px-1.5 capitalize">
-                  {row.original.status ?? "—"}
-                </Badge>
-              ),
-            },
-          ]
-          // eslint-disable-next-line react-hooks/exhaustive-deps
-        }, [personById])}
+        columns={columns}
         getRowId={(r) => r.id}
-        searchable={{
-          placeholder: "Rechercher immatriculation, modèle…",
-          fields: ["plate", "model"] as const,
-        }}
-        filters={[
-          {
-            id: "status",
-            label: "Statut",
-            options: [
-              { label: "Actif", value: "active" },
-              { label: "Inactif", value: "inactive" },
-              { label: "Maintenance", value: "maintenance" },
-            ],
-            accessor: (b) => b.status ?? "",
-            defaultValue: "",
-          },
-        ]}
+        searchable={searchable}
+        filters={filters}
         onAdd={() => {
           setEditing(null)
           setOpen(true)
@@ -308,12 +311,10 @@ export default function BusesPage() {
             assignedDriverId,
           }
 
-          // cast to the ImportDialog generic
           return bus as unknown as Record<string, unknown>
         }}
         onConfirm={(imported) => {
           const typed = imported as unknown as Bus[]
-
           setRows((prev) => {
             const merged: Bus[] = [...prev]
             for (const nb of typed) {
