@@ -202,21 +202,46 @@ export default function ReservationsMapPage() {
           },
         })
 
-        // Interactions: clicking lines OR points selects reservation
+        // Feature click => select reservation (fully type-safe guards)
         const selectFromEvent = (e: mapboxgl.MapLayerMouseEvent) => {
-          const f = e.features?.[0]
-          const resvId = f?.properties?.resvId as string | undefined
+          const features = e.features
+          if (!features || features.length === 0) return
+
+          const f = features[0] as mapboxgl.MapboxGeoJSONFeature
+          const props = (f.properties ?? {}) as Record<string, unknown>
+          const rawId = props["resvId"]
+
+          const resvId =
+            typeof rawId === "string"
+              ? rawId
+              : typeof rawId === "number"
+              ? String(rawId)
+              : (rawId as any)?.toString?.()
+
           if (!resvId) return
           const r = rowsRef.current.find((x) => String(x.id) === resvId)
           if (!r) return
+
           setSelected(r)
 
-          // If the feature is a waypoint, center on that exact point
-          const geom = f.geometry as any
-          const coords: [number, number] | undefined =
-            f.layer.type === "circle" ? geom?.coordinates : undefined
-          if (coords && mapRef.current) {
-            mapRef.current.easeTo({ center: coords, zoom: Math.max(mapRef.current.getZoom(), 12) })
+          // Center either on the point, or fit the clicked line geometry
+          const geom = f.geometry as GeoJSON.Geometry | undefined
+          if (!geom || !mapRef.current) return
+
+          if (geom.type === "Point") {
+            const coords = (geom as GeoJSON.Point).coordinates as [number, number]
+            mapRef.current.easeTo({
+              center: coords,
+              zoom: Math.max(mapRef.current.getZoom(), 12),
+              duration: 400,
+            })
+          } else if (geom.type === "LineString") {
+            const coords = (geom as GeoJSON.LineString).coordinates
+            if (coords.length > 0) {
+              const b = new mapboxgl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number])
+              for (const c of coords) b.extend(c as [number, number])
+              mapRef.current.fitBounds(b, { padding: 64, maxZoom: 14, duration: 500 })
+            }
           }
         }
 
@@ -367,7 +392,6 @@ export default function ReservationsMapPage() {
             const coords: [number, number][] = wps.map((w) => [w.lng, w.lat])
             const bounds = new mapboxgl.LngLatBounds(coords[0], coords[0])
             coords.forEach((c) => bounds.extend(c))
-            // Fit the whole trip
             try {
               mapRef.current.fitBounds(bounds, { padding: 64, maxZoom: 14, duration: 500 })
             } catch {}
@@ -530,7 +554,9 @@ export default function ReservationsMapPage() {
                   {/* Waypoints preview */}
                   {Array.isArray((selected as any).waypoints) && (selected as any).waypoints.length > 0 && (
                     <div className="pt-2">
-                      <div className="text-xs text-muted-foreground mb-1">Étapes ({(selected as any).waypoints.length})</div>
+                      <div className="text-xs text-muted-foreground mb-1">
+                        Étapes ({(selected as any).waypoints.length})
+                      </div>
                       <div className="flex flex-wrap gap-1">
                         {(selected as any).waypoints.map((w: Waypoint, i: number) => (
                           <span
