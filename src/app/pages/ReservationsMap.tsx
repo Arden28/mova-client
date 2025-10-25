@@ -68,9 +68,15 @@ export default function ReservationsMapPage() {
   })
 
   // Debouncers (stable)
-  const debouncedResize = React.useMemo(() => debounce(() => {
-    try { mapRef.current?.resize() } catch {}
-  }, 180), [])
+  const debouncedResize = React.useMemo(
+    () =>
+      debounce(() => {
+        try {
+          mapRef.current?.resize()
+        } catch {}
+      }, 180),
+    []
+  )
 
   const debouncedFit = React.useMemo(
     () =>
@@ -78,7 +84,6 @@ export default function ReservationsMapPage() {
         const map = mapRef.current
         if (!map) return
         try {
-          // compute safe padding based on container size
           const container = map.getContainer()
           const w = container.clientWidth
           const h = container.clientHeight
@@ -156,7 +161,7 @@ export default function ReservationsMapPage() {
           filter: ["==", ["get", "kind"], "start"],
           paint: {
             "circle-radius": 7,
-            "circle-color": "#0ea5e9", // Tailwind sky-500
+            "circle-color": "#0ea5e9",
             "circle-stroke-color": "#0b7490",
             "circle-stroke-width": 1,
           },
@@ -183,7 +188,7 @@ export default function ReservationsMapPage() {
           filter: ["==", ["get", "kind"], "end"],
           paint: {
             "circle-radius": 7,
-            "circle-color": "#a3a3a3", // neutral-400
+            "circle-color": "#a3a3a3",
             "circle-stroke-color": "#525252",
             "circle-stroke-width": 1,
           },
@@ -203,11 +208,8 @@ export default function ReservationsMapPage() {
         })
 
         // Feature click => select reservation
-        const clickHandler = (e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
-          const features = map.queryRenderedFeatures(e.point, {
-            layers: ["resv-start-circles", "resv-end-circles"],
-          })
-          const f = features?.[0]
+        const clickHandler = (e: mapboxgl.MapLayerMouseEvent) => {
+          const f = e.features?.[0]
           const resvId = f?.properties?.resvId as string | undefined
           if (!resvId) return
           const r = rowsRef.current.find((x) => String(x.id) === resvId)
@@ -221,9 +223,11 @@ export default function ReservationsMapPage() {
         map.on("mouseenter", "resv-end-circles", () => (map.getCanvas().style.cursor = "pointer"))
         map.on("mouseleave", "resv-end-circles", () => (map.getCanvas().style.cursor = ""))
 
-        // Initial resize (some browsers need a tick)
+        // Initial resize
         requestAnimationFrame(() => {
-          try { map.resize() } catch {}
+          try {
+            map.resize()
+          } catch {}
         })
       })
 
@@ -322,7 +326,9 @@ export default function ReservationsMapPage() {
     if (allLngLat.length === 1) {
       const [lng, lat] = allLngLat[0]
       requestAnimationFrame(() => {
-        try { map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 13), duration: 500 }) } catch {}
+        try {
+          map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 13), duration: 500 })
+        } catch {}
       })
       return
     }
@@ -417,7 +423,7 @@ export default function ReservationsMapPage() {
                 </SheetDescription>
               </SheetHeader>
               <div className="mt-4 space-y-2">
-                <ScrollArea className="h:[calc(100vh-12rem)] pr-2">
+                <ScrollArea className="h-[calc(100vh-12rem)] pr-2">
                   {loading && <div className="text-sm text-muted-foreground">Chargement…</div>}
                   {!loading && filtered.length === 0 && (
                     <div className="text-sm text-muted-foreground">Aucun résultat.</div>
