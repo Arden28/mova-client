@@ -306,19 +306,24 @@ export default function AddEditReservationSheet({
                 options={busOptions}
                 placeholder="Sélectionner des bus"
               />
-              <p className="text-xs text-muted-foreground">Les bus proviennent de votre parc (libellés = plaques).</p>
+              <p className="text-xs text-muted-foreground">
+                Les bus proviennent de votre parc (libellés = plaques).
+              </p>
             </div>
           </div>
 
           <Separator className="my-6" />
 
           <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-            Astuce : pour modifier le trajet ou les arrêts, utilisez directement la carte (cliquez/drag sur les marqueurs).
+            Astuce : pour modifier le trajet ou les arrêts, utilisez directement la carte (cliquez/drag sur les
+            marqueurs).
           </div>
         </div>
 
         <SheetFooter className="border-t bg-background px-6 py-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Annuler
+          </Button>
           <Button onClick={handleSave}>Enregistrer</Button>
         </SheetFooter>
       </SheetContent>

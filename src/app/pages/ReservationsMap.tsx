@@ -18,15 +18,15 @@ import {
 } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Map as MapIcon, ListChecks, ArrowLeft, Search as SearchIcon, Pencil, X } from "lucide-react"
+import { Map as MapIcon, ListChecks, ArrowLeft, Search as SearchIcon } from "lucide-react"
 
 import reservationApi, { type UIReservation } from "@/api/reservation"
 import busApi, { type UIBus } from "@/api/bus"
 import AddEditReservationSheet from "@/components/reservation/AddEditReservationSheet"
 
 // Prefer env, fallback to your dev token
-const MAPBOX_TOKEN = "pk.eyJ1IjoiYXJkZW4tYm91ZXQiLCJhIjoiY21maWgyY3dvMGF1YTJsc2UxYzliNnA0ZCJ9.XC5hXXwEa-NCUPpPtBdWCA"
+const MAPBOX_TOKEN =
+  "pk.eyJ1IjoiYXJkZW4tYm91ZXQiLCJhIjoiY21maWgyY3dvMGF1YTJsc2UxYzliNnA0ZCJ9.XC5hXXwEa-NCUPpPtBdWCA"
 mapboxgl.accessToken = MAPBOX_TOKEN
 
 type Waypoint = { lat: number; lng: number; label?: string }
@@ -39,7 +39,7 @@ type DirectionsResult = {
 
 async function getDrivingRoute(pts: Waypoint[], token: string): Promise<DirectionsResult> {
   if (!token || pts.length < 2) return { geometry: null, distanceKm: null }
-  const coords = pts.map(p => `${p.lng},${p.lat}`).join(";")
+  const coords = pts.map((p) => `${p.lng},${p.lat}`).join(";")
   const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}.json?geometries=geojson&overview=full&language=fr&access_token=${token}`
   const r = await fetch(url)
   if (!r.ok) return { geometry: null, distanceKm: null }
@@ -96,7 +96,9 @@ export default function ReservationsMapPage() {
         if (alive) setLoading(false)
       }
     })()
-    return () => { alive = false }
+    return () => {
+      alive = false
+    }
   }, [])
 
   React.useEffect(() => {
@@ -139,7 +141,11 @@ export default function ReservationsMapPage() {
         )
       }
 
-      const ro = new ResizeObserver(() => { try { map.resize() } catch {} })
+      const ro = new ResizeObserver(() => {
+        try {
+          map.resize()
+        } catch {}
+      })
       ro.observe(containerRef.current)
 
       return () => {
@@ -164,12 +170,10 @@ export default function ReservationsMapPage() {
     )
   }, [rows, query])
 
-  /* ----------------------------- Marker rendering ----------------------------- 
-     - When NO selection: show A/B for every reservation (same design you had)
-     - When selection: hide others, draw route, draw all stops for selected:
-         * B highlighted + popup card
-         * C, D, E… shown as small badges
-         * A is hidden per your request
+  /* ----------------------------- Marker rendering -----------------------------
+     - NO selection: show only "De" for every reservation (list view).
+     - selection: hide others; show De + intermediates (C/D/…) + Ar for selected;
+                  popup appears above De.
   ----------------------------------------------------------------------------- */
   React.useEffect(() => {
     const map = mapRef.current
@@ -183,47 +187,51 @@ export default function ReservationsMapPage() {
 
     const allLngLat: mapboxgl.LngLatLike[] = []
 
-    // If a reservation is selected: render only its waypoints (no A for start)
     if (selected) {
+      // ONLY the selected reservation is visible
       const wps = (selected as any).waypoints as Waypoint[] | undefined
       if (wps?.length) {
         // include all for fitting
         wps.forEach((w) => allLngLat.push([w.lng, w.lat]))
 
-        // Intermediates (index 1..n-2): C, D, E ...
+        // Start ("De")
+        const start = wps[0]
+        const elDe = document.createElement("div")
+        elDe.className =
+          "rounded-full bg-primary text-primary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
+        elDe.textContent = "De"
+        const mDe = new mapboxgl.Marker({ element: elDe }).setLngLat([start.lng, start.lat]).addTo(map)
+        markersRef.current.push(mDe)
+
+        // Intermediates: C, D, E... (index 1..n-2)
         if (wps.length > 2) {
           for (let i = 1; i < wps.length - 1; i++) {
             const wp = wps[i]
             const el = document.createElement("div")
             el.className =
               "rounded-full bg-muted text-foreground text-[10px] px-1.5 py-0.5 shadow ring-1 ring-black/10"
-            // C starts at index 2 => alpha[2] = "C"
-            el.textContent = alpha[i] ?? String(i + 1)
-
-            const marker = new mapboxgl.Marker({ element: el })
-              .setLngLat([wp.lng, wp.lat])
-              .addTo(map)
-            markersRef.current.push(marker)
+            // C for first intermediate => alpha[i+1]
+            el.textContent = alpha[i + 1] ?? String(i + 1)
+            const m = new mapboxgl.Marker({ element: el }).setLngLat([wp.lng, wp.lat]).addTo(map)
+            markersRef.current.push(m)
           }
         }
 
-        // End (B) — emphasized + popup
-        const end = wps[wps.length - 1]
-        const elB = document.createElement("div")
-        elB.className =
-          "rounded-full bg-secondary text-secondary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
-        elB.textContent = "B"
+        // End ("Ar")
+        if (wps.length > 1) {
+          const end = wps[wps.length - 1]
+          const elAr = document.createElement("div")
+          elAr.className =
+            "rounded-full bg-secondary text-secondary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
+          elAr.textContent = "Ar"
+          const mAr = new mapboxgl.Marker({ element: elAr }).setLngLat([end.lng, end.lat]).addTo(map)
+          markersRef.current.push(mAr)
+        }
 
-        const markerB = new mapboxgl.Marker({ element: elB })
-          .setLngLat([end.lng, end.lat])
-          .addTo(map)
-
-        markersRef.current.push(markerB)
-
-        // Build popup card content (Tailwind classes still apply)
+        // Popup over **De** (start)
         const card = document.createElement("div")
         card.className =
-          "w-[280px] sm:w-[320px] rounded-lg border bg-background shadow-lg overflow-hidden"
+          "w-[280px] sm:w-[320px] rounded-lg border bg-background shadow-lg overflow-hidden pointer-events-auto"
         card.innerHTML = `
           <div class="p-3">
             <div class="flex items-start justify-between gap-3">
@@ -243,12 +251,8 @@ export default function ReservationsMapPage() {
               }</div>
             </div>
             <div class="mt-3 flex gap-2">
-              <button id="popup-edit" class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent">
-                Modifier
-              </button>
-              <button id="popup-close" class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent">
-                Fermer
-              </button>
+              <button id="popup-edit" class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent">Modifier</button>
+              <button id="popup-close" class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent">Fermer</button>
             </div>
           </div>
         `
@@ -259,64 +263,44 @@ export default function ReservationsMapPage() {
           offset: 16,
           anchor: "bottom",
           className: "z-30",
+          maxWidth: "none", // prevent default 240px constraint (fix overflow)
         })
           .setDOMContent(card)
-          .setLngLat([end.lng, end.lat])
+          .setLngLat([start.lng, start.lat]) // anchor over De
           .addTo(map)
 
         popupRef.current = popup
 
         // Attach actions
-        const editBtn = card.querySelector<HTMLButtonElement>("#popup-edit")
-        const closeBtn = card.querySelector<HTMLButtonElement>("#popup-close")
-        editBtn?.addEventListener("click", () => {
+        card.querySelector<HTMLButtonElement>("#popup-edit")?.addEventListener("click", () => {
           setEditing(selected)
           setOpenEditSheet(true)
         })
-        closeBtn?.addEventListener("click", () => {
+        card.querySelector<HTMLButtonElement>("#popup-close")?.addEventListener("click", () => {
           popupRef.current?.remove()
           popupRef.current = null
           setSelected(null)
         })
       }
     } else {
-      // No selection => original listing style (A/B for each reservation)
+      // LIST VIEW: show ONLY "De" for each reservation (hide "Ar")
       filtered.forEach((r) => {
         const wps = (r as any).waypoints as Waypoint[] | undefined
         if (!wps || wps.length < 1) return
 
-        // include ALL points in bounds (so very long trips fit nicely)
+        // include ALL points for fitting
         wps.forEach((w) => allLngLat.push([w.lng, w.lat]))
 
-        // start (A)
         const start = wps[0]
-        const el = document.createElement("div")
-        el.className =
+        const elDe = document.createElement("div")
+        elDe.className =
           "rounded-full bg-primary text-primary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
-        el.textContent = "A"
+        elDe.textContent = "De"
 
-        const marker = new mapboxgl.Marker({ element: el })
-          .setLngLat([start.lng, start.lat])
-          .addTo(map)
-
-        marker.getElement().style.cursor = "pointer"
-        marker.getElement().addEventListener("click", () => setSelected(r))
-        markersRef.current.push(marker)
-
-        // end (B)
-        if (wps.length > 1) {
-          const end = wps[wps.length - 1]
-          const elB = document.createElement("div")
-          elB.className =
-            "rounded-full bg-secondary text-secondary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
-          elB.textContent = "B"
-          const markerB = new mapboxgl.Marker({ element: elB })
-            .setLngLat([end.lng, end.lat])
-            .addTo(map)
-          markerB.getElement().style.cursor = "pointer"
-          markerB.getElement().addEventListener("click", () => setSelected(r))
-          markersRef.current.push(markerB)
-        }
+        const mDe = new mapboxgl.Marker({ element: elDe }).setLngLat([start.lng, start.lat]).addTo(map)
+        mDe.getElement().style.cursor = "pointer"
+        mDe.getElement().addEventListener("click", () => setSelected(r))
+        markersRef.current.push(mDe)
       })
     }
 
@@ -325,7 +309,9 @@ export default function ReservationsMapPage() {
     if (allLngLat.length === 1) {
       const [lng, lat] = allLngLat[0] as [number, number]
       requestAnimationFrame(() => {
-        try { map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 13), duration: 500 }) } catch {}
+        try {
+          map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 13), duration: 500 })
+        } catch {}
       })
       return
     }
@@ -347,12 +333,14 @@ export default function ReservationsMapPage() {
         if (safePadding > 0) map.fitBounds(bounds, { padding: safePadding, maxZoom: 14, duration: 600 })
         else map.easeTo({ center: bounds.getCenter(), zoom: 12, duration: 500 })
       } catch {
-        try { map.easeTo({ center: bounds.getCenter(), zoom: 12, duration: 500 }) } catch {}
+        try {
+          map.easeTo({ center: bounds.getCenter(), zoom: 12, duration: 500 })
+        } catch {}
       }
     })
   }, [filtered, selected, mapLoaded])
 
-  /* ---------------------- Selected route overlay (driving) --------------------- */
+  /* ---------------------- Selected route overlay (driving) ------------------- */
   React.useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
@@ -380,10 +368,16 @@ export default function ReservationsMapPage() {
       if (src) src.setData({ type: "FeatureCollection", features: [] })
     }
 
-    if (!selected) { clear(); return }
+    if (!selected) {
+      clear()
+      return
+    }
 
     const wps = (selected as any).waypoints as Waypoint[] | undefined
-    if (!wps || wps.length < 2) { clear(); return }
+    if (!wps || wps.length < 2) {
+      clear()
+      return
+    }
 
     let cancelled = false
     ;(async () => {
@@ -401,19 +395,24 @@ export default function ReservationsMapPage() {
       } catch {}
     })()
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [selected, mapLoaded])
 
-  // Resize when sheets open/close so the map can re-measure its canvas
+  // Resize when list or edit sheet open/close
   React.useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    const t = setTimeout(() => { try { map.resize() } catch {} }, 250)
+    const t = setTimeout(() => {
+      try {
+        map.resize()
+      } catch {}
+    }, 250)
     return () => clearTimeout(t)
   }, [openList, selected, openEditSheet])
 
   /* -------------------------- Small helpers & UI -------------------------- */
-
   const busPlateById = React.useMemo(() => {
     const m = new Map<string, string>()
     for (const b of buses) if (b?.id) m.set(String(b.id), b.plate ?? String(b.id))
@@ -429,19 +428,25 @@ export default function ReservationsMapPage() {
           setOpenList(false)
           const wps = (r as any).waypoints as Waypoint[] | undefined
           if (wps?.length && mapRef.current) {
-            mapRef.current.easeTo({ center: [wps[0].lng, wps[0].lat], zoom: Math.max(mapRef.current.getZoom(), 13) })
+            mapRef.current.easeTo({
+              center: [wps[0].lng, wps[0].lat],
+              zoom: Math.max(mapRef.current.getZoom(), 13),
+            })
           }
         }}
       >
         <div className="flex items-center justify-between">
           <div className="font-medium">{r.code}</div>
-        <Badge variant="outline" className="capitalize">{r.status}</Badge>
+          <Badge variant="outline" className="capitalize">
+            {r.status}
+          </Badge>
         </div>
         <div className="mt-1 text-sm text-muted-foreground truncate">
           {r.route?.from ?? "—"} → {r.route?.to ?? "—"}
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          Bus: {(r.busIds ?? []).map((id) => busPlateById.get(id) ?? id).join(", ") || "—"} · Sièges: {r.seats ?? "—"}
+          Bus: {(r.busIds ?? []).map((id) => busPlateById.get(id) ?? id).join(", ") || "—"} · Sièges:{" "}
+          {r.seats ?? "—"}
         </div>
       </button>
     )
@@ -481,7 +486,9 @@ export default function ReservationsMapPage() {
             <SheetContent side="right" className="w-[380px] sm:w-[420px]">
               <SheetHeader>
                 <SheetTitle>Réservations ({filtered.length})</SheetTitle>
-                <SheetDescription>Parcourez et sélectionnez pour centrer la carte et voir les détails.</SheetDescription>
+                <SheetDescription>
+                  Parcourez et sélectionnez pour centrer la carte et voir les détails.
+                </SheetDescription>
               </SheetHeader>
               <div className="mt-4 space-y-2">
                 <ScrollArea className="h-[calc(100vh-12rem)] pr-2">
@@ -505,75 +512,9 @@ export default function ReservationsMapPage() {
       </div>
 
       {/* Map container (unchanged design) */}
-      <div
-        ref={containerRef}
-        className="absolute inset-0 bg-muted"
-        style={{ minHeight: "100vh" }}
-      />
+      <div ref={containerRef} className="absolute inset-0 bg-muted" style={{ minHeight: "100vh" }} />
 
-      {/* Left details sheet (unchanged look) */}
-      <Sheet open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>
-        <SheetContent side="left" className="w-[380px] sm:w-[440px]">
-          <SheetHeader>
-            <div className="flex items-center justify-between">
-              <SheetTitle>Détails</SheetTitle>
-              <Button size="icon" variant="ghost" onClick={() => setSelected(null)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </SheetHeader>
-
-          {selected && (
-            <div className="mt-4 space-y-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center justify-between">
-                    <span>{selected.code}</span>
-                    <Badge variant="outline" className="capitalize">{selected.status}</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <div className="text-muted-foreground">
-                    {selected.route?.from ?? "—"} → {selected.route?.to ?? "—"}
-                  </div>
-                  <div>
-                    Passager: <span className="font-medium">{selected.passenger?.name ?? "—"}</span>
-                    <div className="text-muted-foreground text-xs">{selected.passenger?.phone ?? "—"}</div>
-                  </div>
-                  <div>
-                    Bus: {(selected.busIds ?? []).join(", ") || "—"}
-                  </div>
-                  <div>Sièges: {selected.seats ?? "—"}</div>
-                  <div>
-                    Total: {typeof selected.priceTotal === "number" ? `${selected.priceTotal.toLocaleString("fr-FR")} FCFA` : "—"}
-                  </div>
-                  {(selected as any).distanceKm ? (
-                    <div>Distance: {(selected as any).distanceKm.toLocaleString("fr-FR")} km</div>
-                  ) : null}
-                </CardContent>
-              </Card>
-
-              <div className="flex gap-2">
-                <Button
-                  variant="default"
-                  onClick={() => {
-                    setEditing(selected)
-                    setOpenEditSheet(true)
-                  }}
-                >
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Modifier
-                </Button>
-                <Button variant="outline" onClick={() => setSelected(null)}>
-                  Fermer
-                </Button>
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
-
-      {/* Big Add/Edit sheet (new, responsive) */}
+      {/* Big Add/Edit sheet (opens from popup) */}
       <AddEditReservationSheet
         open={openEditSheet}
         onOpenChange={setOpenEditSheet}
