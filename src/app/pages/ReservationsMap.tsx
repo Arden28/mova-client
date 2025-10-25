@@ -76,6 +76,7 @@ export default function ReservationsMapPage() {
   const mapRef = React.useRef<mapboxgl.Map | null>(null)
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const markersRef = React.useRef<mapboxgl.Marker[]>([])
+  const [mapLoaded, setMapLoaded] = React.useState(false)
 
   React.useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -91,6 +92,11 @@ export default function ReservationsMapPage() {
     })
     mapRef.current = map
 
+    map.on("load", () => {
+      setMapLoaded(true)
+      map.resize()
+    })
+
     // Try geolocation
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -99,13 +105,20 @@ export default function ReservationsMapPage() {
       )
     }
 
+    // Keep map sized correctly if container changes
+    const ro = new ResizeObserver(() => {
+      try { map.resize() } catch {}
+    })
+    ro.observe(containerRef.current)
+
     return () => {
+      ro.disconnect()
       map.remove()
       mapRef.current = null
     }
   }, [])
 
-  // Draw markers whenever rows or search changes
+  // Draw markers whenever rows or search changes (after map is loaded)
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return rows
@@ -125,7 +138,7 @@ export default function ReservationsMapPage() {
 
   React.useEffect(() => {
     const map = mapRef.current
-    if (!map) return
+    if (!map || !mapLoaded) return
 
     // clear previous markers
     markersRef.current.forEach((m) => m.remove())
@@ -155,6 +168,7 @@ export default function ReservationsMapPage() {
 
       markersRef.current.push(marker)
       allLngLat.push([start.lng, start.lat])
+
       // Optionally: add END marker (B)
       if (wps.length > 1) {
         const end = wps[wps.length - 1]
@@ -172,13 +186,58 @@ export default function ReservationsMapPage() {
       }
     })
 
-    // Fit bounds if we have points
-    if (allLngLat.length) {
-      const bounds = new mapboxgl.LngLatBounds(allLngLat[0] as [number, number], allLngLat[0] as [number, number])
-      allLngLat.forEach((c) => bounds.extend(c as [number, number]))
-      map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 600 })
+    // Fit bounds safely
+    if (!allLngLat.length) return
+
+    // If only one point, just center on it
+    if (allLngLat.length === 1) {
+      const [lng, lat] = allLngLat[0] as [number, number]
+      requestAnimationFrame(() => {
+        try {
+          map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 13), duration: 500 })
+        } catch {}
+      })
+      return
     }
-  }, [filtered])
+
+    // More than one point: fit bounds, but cap padding to canvas size
+    const bounds = new mapboxgl.LngLatBounds(
+      allLngLat[0] as [number, number],
+      allLngLat[0] as [number, number]
+    )
+    allLngLat.forEach((c) => bounds.extend(c as [number, number]))
+
+    const container = map.getContainer()
+    const w = container.clientWidth
+    const h = container.clientHeight
+    const basePadding = 60
+    const maxPad = Math.max(0, Math.floor(Math.min(w, h) / 2 - 4))
+    const safePadding = Math.min(basePadding, maxPad)
+
+    requestAnimationFrame(() => {
+      try {
+        if (safePadding > 0) {
+          map.fitBounds(bounds, { padding: safePadding, maxZoom: 14, duration: 600 })
+        } else {
+          const center = bounds.getCenter()
+          map.easeTo({ center, zoom: 12, duration: 500 })
+        }
+      } catch {
+        const center = bounds.getCenter()
+        try { map.easeTo({ center, zoom: 12, duration: 500 }) } catch {}
+      }
+    })
+  }, [filtered, mapLoaded])
+
+  // Resize when the sheets open/close so the map can re-measure its canvas
+  React.useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const t = setTimeout(() => {
+      try { map.resize() } catch {}
+    }, 250)
+    return () => clearTimeout(t)
+  }, [openList, selected])
 
   /* -------------------------- Small helpers & UI -------------------------- */
 
@@ -217,7 +276,7 @@ export default function ReservationsMapPage() {
   }
 
   return (
-    <div className="relative h-[calc(100dvh-4rem)] w-full min-h-[70vh]">
+    <div className="relative h-dvh w-full overflow-hidden">
       {/* Top bar (lightweight) */}
       <div className="pointer-events-none absolute left-4 top-4 z-20 flex w-[min(720px,calc(100vw-2rem))] flex-wrap gap-2">
         <div className="pointer-events-auto flex items-center gap-2 rounded-lg border bg-background/95 p-2 shadow">
@@ -230,7 +289,7 @@ export default function ReservationsMapPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Rechercher (code, passager, trajet, bus...)"
-              className="pl-8 w-[260px]"
+              className="w-[260px] pl-8"
             />
           </div>
           <Sheet open={openList} onOpenChange={setOpenList}>
