@@ -3,7 +3,6 @@
 
 import * as React from "react"
 import mapboxgl from "mapbox-gl"
-import "mapbox-gl/dist/mapbox-gl.css" // ⬅️ IMPORTANT: include Mapbox styles
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"

@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Outlet } from "react-router-dom"
 import { cn } from "@/lib/utils"
+import "mapbox-gl/dist/mapbox-gl.css"
 
 /**
  * Minimal layout for map-first experiences:
@@ -15,10 +16,10 @@ export default function MapLayout({
   className?: string
 }) {
   return (
-    <div className={cn("h-[100dvh] w-full bg-background", className)}>
+    <div className="w-full bg-background">
       {/* Optional top strip for future controls (kept empty/hidden) */}
       {/* <div className="h-0" /> */}
-      <main className="h-full w-full">
+      <main className="">
         <Outlet />
       </main>
     </div>
