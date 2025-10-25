@@ -128,7 +128,7 @@ export default function ReservationsMapPage() {
         container: containerRef.current,
         style: "mapbox://styles/mapbox/streets-v12",
         center: [36.8219, -1.2921],
-        zoom: 15,
+        zoom: 8,
         maxZoom: 19,
         accessToken: MAPBOX_TOKEN,
       })
