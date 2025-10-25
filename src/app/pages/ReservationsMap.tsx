@@ -289,7 +289,7 @@ export default function ReservationsMapPage() {
   }
 
   return (
-  <div className="relative h-full w-full">
+  <div className="relative h-full w-full min-h-0">
       {/* Inline error banner (token/style issues etc.) */}
       {mapError && (
         <div className="absolute inset-x-0 top-0 z-30 m-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
@@ -346,11 +346,7 @@ export default function ReservationsMapPage() {
       </div>
 
       {/* Map container (bg as visual fallback while style loads) */}
-    <div
-      ref={containerRef}
-      className="absolute inset-0 bg-muted"
-      style={{ minHeight: 400 }} // safety fallback in odd environments
-    />
+    <div ref={containerRef} className="absolute inset-0 bg-muted" />
 
       {/* Selected reservation details (left sheet) */}
       <Sheet open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>

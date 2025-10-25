@@ -2,12 +2,12 @@
 
 import * as React from "react"
 import { Outlet } from "react-router-dom"
-import { cn } from "@/lib/utils"
 import "mapbox-gl/dist/mapbox-gl.css"
 
-export default function MapLayout({ className }: { className?: string }) {
+export default function MapLayout() {
   return (
-    <div className={cn("relative h-dvh w-dvw bg-background", className)}>
+    // Fill the viewport no matter what
+    <div className="fixed inset-0 bg-background">
       <main className="h-full w-full">
         <Outlet />
       </main>
