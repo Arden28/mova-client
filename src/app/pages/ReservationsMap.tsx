@@ -68,15 +68,9 @@ export default function ReservationsMapPage() {
   })
 
   // Debouncers (stable)
-  const debouncedResize = React.useMemo(
-    () =>
-      debounce(() => {
-        try {
-          mapRef.current?.resize()
-        } catch {}
-      }, 180),
-    []
-  )
+  const debouncedResize = React.useMemo(() => debounce(() => {
+    try { mapRef.current?.resize() } catch {}
+  }, 180), [])
 
   const debouncedFit = React.useMemo(
     () =>
@@ -84,6 +78,7 @@ export default function ReservationsMapPage() {
         const map = mapRef.current
         if (!map) return
         try {
+          // compute safe padding based on container size
           const container = map.getContainer()
           const w = container.clientWidth
           const h = container.clientHeight
@@ -141,9 +136,6 @@ export default function ReservationsMapPage() {
         zoom: 10,
         maxZoom: 19,
         accessToken: MAPBOX_TOKEN,
-
-        // ↓↓↓ This reduces glyph atlas pressure (CJK, emoji)
-        localIdeographFontFamily: "'Noto Sans CJK', 'Arial Unicode MS', 'Segoe UI Symbol', sans-serif",
       })
       mapRef.current = map
 
@@ -156,7 +148,7 @@ export default function ReservationsMapPage() {
           data: dataRef.current, // empty at start; we set it later
         })
 
-        // We keep just circles (no text) to avoid glyph usage entirely
+        // Start points (A)
         map.addLayer({
           id: "resv-start-circles",
           type: "circle",
@@ -164,12 +156,26 @@ export default function ReservationsMapPage() {
           filter: ["==", ["get", "kind"], "start"],
           paint: {
             "circle-radius": 7,
-            "circle-color": "#0ea5e9", // A
+            "circle-color": "#0ea5e9", // Tailwind sky-500
             "circle-stroke-color": "#0b7490",
             "circle-stroke-width": 1,
           },
         })
+        map.addLayer({
+          id: "resv-start-labels",
+          type: "symbol",
+          source: "resv-points",
+          filter: ["==", ["get", "kind"], "start"],
+          layout: {
+            "text-field": "A",
+            "text-size": 11,
+            "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
+            "text-offset": [0, 0.8],
+          },
+          paint: { "text-color": "#0f172a" },
+        })
 
+        // End points (B)
         map.addLayer({
           id: "resv-end-circles",
           type: "circle",
@@ -177,15 +183,31 @@ export default function ReservationsMapPage() {
           filter: ["==", ["get", "kind"], "end"],
           paint: {
             "circle-radius": 7,
-            "circle-color": "#a3a3a3", // B
+            "circle-color": "#a3a3a3", // neutral-400
             "circle-stroke-color": "#525252",
             "circle-stroke-width": 1,
           },
         })
+        map.addLayer({
+          id: "resv-end-labels",
+          type: "symbol",
+          source: "resv-points",
+          filter: ["==", ["get", "kind"], "end"],
+          layout: {
+            "text-field": "B",
+            "text-size": 11,
+            "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
+            "text-offset": [0, 0.8],
+          },
+          paint: { "text-color": "#0f172a" },
+        })
 
         // Feature click => select reservation
-        const clickHandler = (e: mapboxgl.MapLayerMouseEvent) => {
-          const f = e.features?.[0]
+        const clickHandler = (e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
+          const features = map.queryRenderedFeatures(e.point, {
+            layers: ["resv-start-circles", "resv-end-circles"],
+          })
+          const f = features?.[0]
           const resvId = f?.properties?.resvId as string | undefined
           if (!resvId) return
           const r = rowsRef.current.find((x) => String(x.id) === resvId)
@@ -199,11 +221,9 @@ export default function ReservationsMapPage() {
         map.on("mouseenter", "resv-end-circles", () => (map.getCanvas().style.cursor = "pointer"))
         map.on("mouseleave", "resv-end-circles", () => (map.getCanvas().style.cursor = ""))
 
-        // Initial resize
+        // Initial resize (some browsers need a tick)
         requestAnimationFrame(() => {
-          try {
-            map.resize()
-          } catch {}
+          try { map.resize() } catch {}
         })
       })
 
@@ -302,9 +322,7 @@ export default function ReservationsMapPage() {
     if (allLngLat.length === 1) {
       const [lng, lat] = allLngLat[0]
       requestAnimationFrame(() => {
-        try {
-          map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 13), duration: 500 })
-        } catch {}
+        try { map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 13), duration: 500 }) } catch {}
       })
       return
     }
@@ -399,7 +417,7 @@ export default function ReservationsMapPage() {
                 </SheetDescription>
               </SheetHeader>
               <div className="mt-4 space-y-2">
-                <ScrollArea className="h-[calc(100vh-12rem)] pr-2">
+                <ScrollArea className="h:[calc(100vh-12rem)] pr-2">
                   {loading && <div className="text-sm text-muted-foreground">Chargement…</div>}
                   {!loading && filtered.length === 0 && (
                     <div className="text-sm text-muted-foreground">Aucun résultat.</div>
@@ -420,7 +438,12 @@ export default function ReservationsMapPage() {
       </div>
 
       {/* Map container (fills page) */}
-      <div ref={containerRef} className="absolute inset-0 bg-muted" />
+    <div
+      ref={containerRef}
+      className="absolute inset-0 bg-muted"
+      style={{ minHeight: "100vh" }} // safety fallback in odd environments
+    />
+
 
       {/* Selected reservation details (left sheet) */}
       <Sheet open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>
