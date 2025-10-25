@@ -1,4 +1,3 @@
-// src/app/pages/ReservationsMap.tsx
 "use client"
 
 import * as React from "react"
@@ -28,6 +27,8 @@ import {
   Undo2,
   Save,
   X,
+  MapPin,
+  Loader2,
 } from "lucide-react"
 
 import reservationApi, { type UIReservation } from "@/api/reservation"
@@ -61,6 +62,38 @@ async function getDrivingRoute(pts: Waypoint[], token: string): Promise<Directio
 }
 
 const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")
+
+/* ------------------------------ Geocoding (CG) ---------------------------- */
+// Republic of the Congo bounding box (approx): [minLon, minLat, maxLon, maxLat]
+const CG_BBOX: [number, number, number, number] = [11.1, -5.5, 18.8, 3.8]
+type GeoResult = { label: string; lat: number; lng: number }
+
+async function geocodeForwardCG(
+  q: string,
+  map: mapboxgl.Map | null,
+  token: string
+): Promise<GeoResult[]> {
+  if (!q || !token) return []
+  const center = map?.getCenter()
+  const prox = center ? `&proximity=${center.lng},${center.lat}` : ""
+  const bbox = `&bbox=${CG_BBOX.join(",")}`
+  // Restrict by country + bbox + fuzzy + French labels
+  const url =
+    `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
+    `?access_token=${token}&limit=8&language=fr&fuzzyMatch=true${prox}${bbox}&country=CG` +
+    `&types=address,street,place,locality,neighborhood,poi`
+
+  const r = await fetch(url)
+  if (!r.ok) return []
+  const j: { features?: { place_name?: string; center?: [number, number] }[] } = await r.json()
+  return (j.features ?? [])
+    .filter((f) => Array.isArray(f.center) && typeof f.center[0] === "number" && typeof f.center[1] === "number")
+    .map((f) => ({
+      label: f.place_name || "Lieu",
+      lng: f.center![0],
+      lat: f.center![1],
+    }))
+}
 
 export default function ReservationsMapPage() {
   const [rows, setRows] = React.useState<UIReservation[]>([])
@@ -97,8 +130,15 @@ export default function ReservationsMapPage() {
   // Debounce directions
   const routeDebounceRef = React.useRef<number | null>(null)
 
-  // Toolbar (FAB) open/close
+  // Toolbar (main) open/close
   const [toolbarOpen, setToolbarOpen] = React.useState(false)
+
+  // Place Search FAB & bar
+  const [placeBarOpen, setPlaceBarOpen] = React.useState(false)
+  const [placeQuery, setPlaceQuery] = React.useState("")
+  const [placeResults, setPlaceResults] = React.useState<GeoResult[]>([])
+  const [placeLoading, setPlaceLoading] = React.useState(false)
+  const searchMarkerRef = React.useRef<mapboxgl.Marker | null>(null)
 
   React.useEffect(() => {
     let alive = true
@@ -139,8 +179,8 @@ export default function ReservationsMapPage() {
       const map = new mapboxgl.Map({
         container: containerRef.current,
         style: "mapbox://styles/mapbox/streets-v12",
-        center: [36.8219, -1.2921],
-        zoom: 14,
+        center: [15.2832, -4.2667], // Brazzaville approx
+        zoom: 12,
         maxZoom: 19,
         accessToken: MAPBOX_TOKEN,
       })
@@ -177,6 +217,7 @@ export default function ReservationsMapPage() {
           map.off("click", clickHandlerRef.current as any)
           clickHandlerRef.current = null
         }
+        searchMarkerRef.current?.remove()
         map.remove()
         mapRef.current = null
       }
@@ -322,6 +363,7 @@ export default function ReservationsMapPage() {
           </div>
         `
 
+        const map = mapRef.current!
         const popup = new mapboxgl.Popup({
           closeButton: false,
           closeOnClick: false,
@@ -494,7 +536,7 @@ export default function ReservationsMapPage() {
     }
   }, [routeEditMode])
 
-  // Resize on UI changes (include animated toolbar)
+  // Resize on UI changes (include animated toolbars)
   React.useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -504,7 +546,7 @@ export default function ReservationsMapPage() {
       } catch {}
     }, 260)
     return () => clearTimeout(t)
-  }, [openList, selected, openEditSheet, routeEditMode, toolbarOpen])
+  }, [openList, selected, openEditSheet, routeEditMode, toolbarOpen, placeBarOpen])
 
   /* -------------------------- Helpers -------------------------- */
   const busPlateById = React.useMemo(() => {
@@ -605,6 +647,52 @@ export default function ReservationsMapPage() {
     map.fitBounds(b, { padding: 60, maxZoom: 15, duration: 500 })
   }
 
+  /* -------------------------- Place search logic --------------------------- */
+  // Debounced search
+  React.useEffect(() => {
+    const q = placeQuery.trim()
+    if (!placeBarOpen) {
+      setPlaceResults([])
+      setPlaceLoading(false)
+      return
+    }
+    if (!q) {
+      setPlaceResults([])
+      setPlaceLoading(false)
+      return
+    }
+    const id = window.setTimeout(async () => {
+      setPlaceLoading(true)
+      try {
+        const res = await geocodeForwardCG(q, mapRef.current, MAPBOX_TOKEN)
+        setPlaceResults(res)
+      } finally {
+        setPlaceLoading(false)
+      }
+    }, 300)
+    return () => window.clearTimeout(id)
+  }, [placeQuery, placeBarOpen])
+
+  function focusResult(r: GeoResult) {
+    const map = mapRef.current
+    if (!map) return
+    // Remove previous marker
+    searchMarkerRef.current?.remove()
+    // Custom marker
+    const el = document.createElement("div")
+    el.className =
+      "grid place-items-center rounded-full bg-white ring-1 ring-black/10 shadow size-8"
+    const dot = document.createElement("div")
+    dot.className = "size-3 rounded-full bg-primary"
+    el.appendChild(dot)
+
+    const mk = new mapboxgl.Marker({ element: el }).setLngLat([r.lng, r.lat]).addTo(map)
+    searchMarkerRef.current = mk
+
+    // Fly to
+    map.easeTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 15), duration: 600 })
+  }
+
   return (
     <div className="relative h-full w-full min-h-0">
       {/* Inline error banner */}
@@ -614,12 +702,12 @@ export default function ReservationsMapPage() {
         </div>
       )}
 
-      {/* FAB + Animated Toolbar */}
+      {/* MAIN FAB + Animated Toolbar */}
       <div className="absolute left-4 top-4 z-20">
         {!toolbarOpen && (
           <button
             type="button"
-            aria-label="Ouvrir la barre de recherche"
+            aria-label="Ouvrir la barre"
             onClick={() => setToolbarOpen(true)}
             className="grid size-12 place-items-center rounded-full bg-white shadow-lg ring-1 ring-black/10 transition hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary"
           >
@@ -641,12 +729,12 @@ export default function ReservationsMapPage() {
                 <div className="grid size-8 place-items-center rounded-full bg-white ring-1 ring-black/10">
                   <MapIcon className="h-4 w-4" />
                 </div>
-                {/* <span className="hidden text-sm font-medium sm:inline">Réservations · Carte</span> */}
+                <span className="hidden text-sm font-medium sm:inline">Réservations · Carte</span>
               </div>
 
               <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
 
-              {/* Search */}
+              {/* Search in reservations */}
               <div className="relative min-w-0 flex-1">
                 <SearchIcon className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -708,9 +796,93 @@ export default function ReservationsMapPage() {
         </AnimatePresence>
       </div>
 
+      {/* SECOND FAB + Animated Place Search (restricted to Congo-Brazzaville) */}
+      <div className="absolute left-4 top-20 z-20">
+        {!placeBarOpen && (
+          <button
+            type="button"
+            aria-label="Ouvrir la recherche de lieux"
+            onClick={() => setPlaceBarOpen(true)}
+            className="grid size-12 place-items-center rounded-full bg-white shadow-lg ring-1 ring-black/10 transition hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <SearchIcon className="h-5 w-5 text-foreground" />
+          </button>
+        )}
+
+        <AnimatePresence>
+          {placeBarOpen && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, x: -8 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95, x: -8 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="pointer-events-auto mt-0 w-[90vw] max-w-[720px] rounded-xl border bg-background/95 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:backdrop-blur"
+            >
+              <div className="flex items-center gap-2">
+                <div className="grid size-8 shrink-0 place-items-center rounded-full bg-white ring-1 ring-black/10">
+                  <MapPin className="h-4 w-4" />
+                </div>
+                <div className="relative min-w-0 flex-1">
+                  <SearchIcon className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={placeQuery}
+                    onChange={(e) => setPlaceQuery(e.target.value)}
+                    placeholder="Chercher un lieu dans le Congo-Brazzaville (rue, adresse, ville…)"
+                    className="w-full pl-8"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Fermer"
+                  className="shrink-0"
+                  onClick={() => {
+                    setPlaceBarOpen(false)
+                    setPlaceQuery("")
+                    setPlaceResults([])
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Results dropdown under the bar */}
+              <div className="relative">
+                <div className="absolute left-0 right-0 z-10 mt-2 rounded-md border bg-popover p-1 shadow">
+                  {placeLoading && (
+                    <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Recherche…
+                    </div>
+                  )}
+                  {!placeLoading && placeQuery && placeResults.length === 0 && (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                      Aucun résultat (essayez un autre libellé).
+                    </div>
+                  )}
+                  {!placeLoading &&
+                    placeResults.map((r, i) => (
+                      <button
+                        key={`${r.lng}-${r.lat}-${i}`}
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                        onClick={() => focusResult(r)}
+                      >
+                        <MapPin className="h-4 w-4 opacity-70" />
+                        <span className="truncate">{r.label}</span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* Floating Route Editor Toolbar (only when editing) */}
       {routeEditMode && (
-        <div className="absolute left-4 top-20 z-20 w-[min(640px,calc(100vw-2rem))]">
+        <div className="absolute left-4 top-[168px] z-20 w-[min(640px,calc(100vw-2rem))]">
           <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background/95 p-2 shadow">
             <Badge variant="secondary" className="px-2">
               {draftWps?.length ?? 0} points
