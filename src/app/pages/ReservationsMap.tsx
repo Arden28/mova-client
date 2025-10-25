@@ -8,6 +8,8 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { motion, AnimatePresence } from "framer-motion"
+
 import {
   Sheet,
   SheetContent,
@@ -18,7 +20,15 @@ import {
 } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Map as MapIcon, ListChecks, ArrowLeft, Search as SearchIcon, Undo2, Save, X } from "lucide-react"
+import {
+  Map as MapIcon,
+  ListChecks,
+  ArrowLeft,
+  Search as SearchIcon,
+  Undo2,
+  Save,
+  X,
+} from "lucide-react"
 
 import reservationApi, { type UIReservation } from "@/api/reservation"
 import busApi, { type UIBus } from "@/api/bus"
@@ -76,7 +86,6 @@ export default function ReservationsMapPage() {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const markersRef = React.useRef<mapboxgl.Marker[]>([])
   const popupRef = React.useRef<mapboxgl.Popup | null>(null)
-  // ⬇️ FIX: remove EventData from the type
   const clickHandlerRef = React.useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null)
   const [mapLoaded, setMapLoaded] = React.useState(false)
   const [mapError, setMapError] = React.useState<string | null>(null)
@@ -87,6 +96,9 @@ export default function ReservationsMapPage() {
 
   // Debounce directions
   const routeDebounceRef = React.useRef<number | null>(null)
+
+  // Toolbar (FAB) open/close
+  const [toolbarOpen, setToolbarOpen] = React.useState(false)
 
   React.useEffect(() => {
     let alive = true
@@ -128,7 +140,7 @@ export default function ReservationsMapPage() {
         container: containerRef.current,
         style: "mapbox://styles/mapbox/streets-v12",
         center: [36.8219, -1.2921],
-        zoom: 8,
+        zoom: 14,
         maxZoom: 19,
         accessToken: MAPBOX_TOKEN,
       })
@@ -161,7 +173,6 @@ export default function ReservationsMapPage() {
       return () => {
         ro.disconnect()
         popupRef.current?.remove()
-        // remove edit click handler if present
         if (clickHandlerRef.current) {
           map.off("click", clickHandlerRef.current as any)
           clickHandlerRef.current = null
@@ -196,7 +207,6 @@ export default function ReservationsMapPage() {
     const map = mapRef.current
     if (!map || !mapLoaded) return
 
-    // clear previous markers + popup
     markersRef.current.forEach((m) => m.remove())
     markersRef.current = []
     popupRef.current?.remove()
@@ -205,7 +215,6 @@ export default function ReservationsMapPage() {
     const allLngLat: mapboxgl.LngLatLike[] = []
 
     if (selected && activeWps?.length) {
-      // include all for fitting
       activeWps.forEach((w) => allLngLat.push([w.lng, w.lat]))
 
       // Start ("De")
@@ -230,14 +239,13 @@ export default function ReservationsMapPage() {
       }
       markersRef.current.push(mDe)
 
-      // Intermediates: C, D, E... (index 1..n-2)
+      // Intermediates
       if (activeWps.length > 2) {
         for (let i = 1; i < activeWps.length - 1; i++) {
           const wp = activeWps[i]
           const el = document.createElement("div")
           el.className =
             "rounded-full bg-muted text-foreground text-[10px] px-1.5 py-0.5 shadow ring-1 ring-black/10"
-          // C for first intermediate => alpha[i+1]
           el.textContent = alpha[i + 1] ?? String(i + 1)
           const m = new mapboxgl.Marker({ element: el, draggable: routeEditMode })
             .setLngLat([wp.lng, wp.lat])
@@ -283,7 +291,7 @@ export default function ReservationsMapPage() {
         markersRef.current.push(mAr)
       }
 
-      // Popup over De (only when NOT editing)
+      // Popup (view mode)
       if (!routeEditMode && start) {
         const card = document.createElement("div")
         card.className =
@@ -320,17 +328,15 @@ export default function ReservationsMapPage() {
           offset: 16,
           anchor: "bottom",
           className: "z-30",
-          maxWidth: "none", // prevent default 240px constraint (fix overflow)
+          maxWidth: "none",
         })
           .setDOMContent(card)
-          .setLngLat([start.lng, start.lat]) // anchor over De
+          .setLngLat([start.lng, start.lat])
           .addTo(map)
 
         popupRef.current = popup
 
-        // actions
         card.querySelector<HTMLButtonElement>("#popup-edit-route")?.addEventListener("click", () => {
-          // enter route edit mode with a draft copy
           const wps = (selected as any)?.waypoints as Waypoint[] | undefined
           setDraftWps(wps ? JSON.parse(JSON.stringify(wps)) : [])
           setRouteEditMode(true)
@@ -346,12 +352,10 @@ export default function ReservationsMapPage() {
         })
       }
     } else {
-      // LIST VIEW: show ONLY "De" for each reservation (hide "Ar")
+      // LIST VIEW: show "De" for each reservation
       filtered.forEach((r) => {
         const wps = (r as any).waypoints as Waypoint[] | undefined
         if (!wps || wps.length < 1) return
-
-        // include ALL points for fitting
         wps.forEach((w) => allLngLat.push([w.lng, w.lat]))
 
         const start = wps[0]
@@ -367,7 +371,7 @@ export default function ReservationsMapPage() {
       })
     }
 
-    // Fit bounds
+    // Fit bounds safely
     if (!allLngLat.length) return
     if (allLngLat.length === 1) {
       const [lng, lat] = allLngLat[0] as [number, number]
@@ -437,7 +441,6 @@ export default function ReservationsMapPage() {
       return
     }
 
-    // debounce + cancel stale
     if (routeDebounceRef.current) window.clearTimeout(routeDebounceRef.current)
     routeDebounceRef.current = window.setTimeout(async () => {
       try {
@@ -464,7 +467,6 @@ export default function ReservationsMapPage() {
     const map = mapRef.current
     if (!map) return
 
-    // clean previous handler
     if (clickHandlerRef.current) {
       map.off("click", clickHandlerRef.current as any)
       clickHandlerRef.current = null
@@ -472,12 +474,10 @@ export default function ReservationsMapPage() {
 
     if (!routeEditMode) return
 
-    // ⬇️ FIX: use MapMouseEvent only
     const onClick = (e: mapboxgl.MapMouseEvent) => {
       const { lng, lat } = e.lngLat
       setDraftWps((prev) => {
         const next = prev ? [...prev] : []
-        // Append as a new waypoint (before Ar? Simpler: push; users can drag later)
         next.push({ lat, lng, label: `Point ${next.length + 1}` })
         return next
       })
@@ -494,7 +494,7 @@ export default function ReservationsMapPage() {
     }
   }, [routeEditMode])
 
-  // Resize on UI changes
+  // Resize on UI changes (include animated toolbar)
   React.useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -502,9 +502,9 @@ export default function ReservationsMapPage() {
       try {
         map.resize()
       } catch {}
-    }, 250)
+    }, 260)
     return () => clearTimeout(t)
-  }, [openList, selected, openEditSheet, routeEditMode])
+  }, [openList, selected, openEditSheet, routeEditMode, toolbarOpen])
 
   /* -------------------------- Helpers -------------------------- */
   const busPlateById = React.useMemo(() => {
@@ -539,8 +539,7 @@ export default function ReservationsMapPage() {
           {r.route?.from ?? "—"} → {r.route?.to ?? "—"}
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          Bus: {(r.busIds ?? []).map((id) => busPlateById.get(id) ?? id).join(", ") || "—"} · Sièges:{" "}
-          {r.seats ?? "—"}
+          Bus: {(r.busIds ?? []).map((id) => busPlateById.get(id) ?? id).join(", ") || "—"} · Sièges: {r.seats ?? "—"}
         </div>
       </button>
     )
@@ -563,11 +562,9 @@ export default function ReservationsMapPage() {
       },
     }
 
-    // optimistic update
     setRows((xs) => xs.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))
     setSelected(updated)
 
-    // persist (best-effort)
     try {
       await reservationApi.update(updated.id, updated)
       toast.success("Itinéraire enregistré.")
@@ -617,54 +614,98 @@ export default function ReservationsMapPage() {
         </div>
       )}
 
-      {/* Top bar (unchanged design) */}
-      <div className="pointer-events-none absolute left-4 top-4 z-20 flex w-[min(720px,calc(100vw-2rem))] flex-wrap gap-2">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-lg border bg-background/95 p-2 shadow">
-          <MapIcon className="h-4 w-4" />
-          <span className="text-sm font-medium">Réservations · Carte</span>
-          <Separator orientation="vertical" className="mx-1 h-5" />
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher (code, passager, trajet, bus...)"
-              className="w-[260px] pl-8"
-            />
-          </div>
-          <Sheet open={openList} onOpenChange={setOpenList}>
-            <SheetTrigger asChild>
-              <Button size="sm" variant="outline" className="ml-1">
-                <ListChecks className="mr-2 h-4 w-4" />
-                Lister
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-[380px] sm:w-[420px]">
-              <SheetHeader>
-                <SheetTitle>Réservations ({filtered.length})</SheetTitle>
-                <SheetDescription>
-                  Parcourez et sélectionnez pour centrer la carte et voir les détails.
-                </SheetDescription>
-              </SheetHeader>
-              <div className="mt-4 space-y-2">
-                <ScrollArea className="h-[calc(100vh-12rem)] pr-2">
-                  {loading && <div className="text-sm text-muted-foreground">Chargement…</div>}
-                  {!loading && filtered.length === 0 && (
-                    <div className="text-sm text-muted-foreground">Aucun résultat.</div>
-                  )}
-                  {!loading && filtered.map((r) => <RowItem key={r.id} r={r} />)}
-                </ScrollArea>
-              </div>
-            </SheetContent>
-          </Sheet>
+      {/* FAB + Animated Toolbar */}
+      <div className="absolute left-4 top-4 z-20">
+        {!toolbarOpen && (
+          <button
+            type="button"
+            aria-label="Ouvrir la barre de recherche"
+            onClick={() => setToolbarOpen(true)}
+            className="grid size-12 place-items-center rounded-full bg-white shadow-lg ring-1 ring-black/10 transition hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <MapIcon className="h-5 w-5 text-foreground" />
+          </button>
+        )}
 
-          <Button asChild size="sm" variant="ghost" className="ml-1">
-            <Link to="/reservations">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Retour à la liste
-            </Link>
-          </Button>
-        </div>
+        <AnimatePresence>
+          {toolbarOpen && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, x: -8 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95, x: -8 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="pointer-events-auto mt-0 flex w-[90vw] max-w-[720px] items-center gap-2 rounded-xl border bg-background/95 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:backdrop-blur"
+            >
+              {/* Left: icon + title (title hidden on xs) */}
+              <div className="flex items-center gap-2 pl-1 pr-1">
+                <div className="grid size-8 place-items-center rounded-full bg-white ring-1 ring-black/10">
+                  <MapIcon className="h-4 w-4" />
+                </div>
+                <span className="hidden text-sm font-medium sm:inline">Réservations · Carte</span>
+              </div>
+
+              <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
+
+              {/* Search */}
+              <div className="relative min-w-0 flex-1">
+                <SearchIcon className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Rechercher (code, passager, trajet, bus...)"
+                  className="w-full pl-8"
+                />
+              </div>
+
+              {/* List sheet trigger */}
+              <Sheet open={openList} onOpenChange={setOpenList}>
+                <SheetTrigger asChild>
+                  <Button size="icon" variant="outline" className="shrink-0">
+                    <ListChecks className="h-4 w-4" />
+                    <span className="sr-only">Ouvrir la liste</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[380px] sm:w-[420px]">
+                  <SheetHeader>
+                    <SheetTitle>Réservations ({filtered.length})</SheetTitle>
+                    <SheetDescription>
+                      Parcourez et sélectionnez pour centrer la carte et voir les détails.
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="mt-4 space-y-2">
+                    <ScrollArea className="h-[calc(100vh-12rem)] pr-2">
+                      {loading && <div className="text-sm text-muted-foreground">Chargement…</div>}
+                      {!loading && filtered.length === 0 && (
+                        <div className="text-sm text-muted-foreground">Aucun résultat.</div>
+                      )}
+                      {!loading && filtered.map((r) => <RowItem key={r.id} r={r} />)}
+                    </ScrollArea>
+                  </div>
+                </SheetContent>
+              </Sheet>
+
+              {/* Back to list (icon on xs) */}
+              <Button asChild size="sm" variant="ghost" className="shrink-0">
+                <Link to="/reservations" className="flex items-center gap-2">
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline">Retour à la liste</span>
+                </Link>
+              </Button>
+
+              {/* Close toolbar */}
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Fermer"
+                className="ml-1 shrink-0"
+                onClick={() => setToolbarOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Floating Route Editor Toolbar (only when editing) */}
@@ -715,7 +756,6 @@ export default function ReservationsMapPage() {
         onOpenChange={setOpenEditSheet}
         editing={editing}
         onSubmit={async (res) => {
-          // optimistic
           setRows((xs) => xs.map((x) => (x.id === res.id ? { ...x, ...res } : x)))
           try {
             const saved = await reservationApi.update(res.id, res)
