@@ -3,6 +3,7 @@
 
 import * as React from "react"
 import mapboxgl from "mapbox-gl"
+import "mapbox-gl/dist/mapbox-gl.css" // ⬅️ IMPORTANT: include Mapbox styles
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -25,11 +26,11 @@ import reservationApi, { type UIReservation } from "@/api/reservation"
 import AddEditReservationDialog from "@/components/reservation/AddEditReservation"
 import busApi, { type UIBus } from "@/api/bus"
 
-// const MAPBOX_TOKEN =
-//   (globalThis as any)?.process?.env?.NEXT_PUBLIC_MAPBOX_TOKEN ??
-//   (import.meta as any)?.env?.VITE_MAPBOX_TOKEN ??
-//   ""
-const MAPBOX_TOKEN = "pk.eyJ1IjoiYXJkZW4tYm91ZXQiLCJhIjoiY21maWgyY3dvMGF1YTJsc2UxYzliNnA0ZCJ9.XC5hXXwEa-NCUPpPtBdWCA"
+// Prefer env, fallback to your dev token
+const MAPBOX_TOKEN =
+  (globalThis as any)?.process?.env?.NEXT_PUBLIC_MAPBOX_TOKEN ??
+  (import.meta as any)?.env?.VITE_MAPBOX_TOKEN ??
+  "pk.eyJ1IjoiYXJkZW4tYm91ZXQiLCJhIjoiY21maWgyY3dvMGF1YTJsc2UxYzliNnA0ZCJ9.XC5hXXwEa-NCUPpPtBdWCA"
 
 mapboxgl.accessToken = MAPBOX_TOKEN
 
@@ -49,13 +50,20 @@ export default function ReservationsMapPage() {
   // Marker selection
   const [selected, setSelected] = React.useState<UIReservation | null>(null)
 
+  // Map refs/state
+  const mapRef = React.useRef<mapboxgl.Map | null>(null)
+  const containerRef = React.useRef<HTMLDivElement | null>(null)
+  const markersRef = React.useRef<mapboxgl.Marker[]>([])
+  const [mapLoaded, setMapLoaded] = React.useState(false)
+  const [mapError, setMapError] = React.useState<string | null>(null)
+
   React.useEffect(() => {
     let alive = true
     ;(async () => {
       try {
         setLoading(true)
         const [resv, b] = await Promise.all([
-          reservationApi.list({ per_page: 500 }), // include waypoints if your API returns them
+          reservationApi.list({ per_page: 500 }),
           busApi.list({ per_page: 500 }),
         ])
         if (!alive) return
@@ -72,53 +80,67 @@ export default function ReservationsMapPage() {
     }
   }, [])
 
-  // Map setup
-  const mapRef = React.useRef<mapboxgl.Map | null>(null)
-  const containerRef = React.useRef<HTMLDivElement | null>(null)
-  const markersRef = React.useRef<mapboxgl.Marker[]>([])
-  const [mapLoaded, setMapLoaded] = React.useState(false)
-
   React.useEffect(() => {
-    if (!containerRef.current || mapRef.current) return
-    if (!MAPBOX_TOKEN) return
-
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/streets-v12",
-      center: [36.8219, -1.2921], // Nairobi default
-      zoom: 10,
-      maxZoom: 19,
-      accessToken: MAPBOX_TOKEN,
-    })
-    mapRef.current = map
-
-    map.on("load", () => {
-      setMapLoaded(true)
-      map.resize()
-    })
-
-    // Try geolocation
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => map.easeTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 12 }),
-        () => {}
-      )
+    // Basic support check (avoids blank if WebGL disabled)
+    if (typeof window === "undefined") return
+    if (!mapboxgl.supported?.()) {
+      setMapError("Mapbox GL is not supported in this browser/device.")
+      return
     }
 
-    // Keep map sized correctly if container changes
-    const ro = new ResizeObserver(() => {
-      try { map.resize() } catch {}
-    })
-    ro.observe(containerRef.current)
+    if (!containerRef.current || mapRef.current) return
+    if (!MAPBOX_TOKEN) {
+      setMapError("Mapbox token manquant. Configurez VITE_MAPBOX_TOKEN.")
+      return
+    }
 
-    return () => {
-      ro.disconnect()
-      map.remove()
-      mapRef.current = null
+    try {
+      const map = new mapboxgl.Map({
+        container: containerRef.current,
+        style: "mapbox://styles/mapbox/streets-v12",
+        center: [36.8219, -1.2921], // Nairobi default
+        zoom: 10,
+        maxZoom: 19,
+        accessToken: MAPBOX_TOKEN,
+      })
+      mapRef.current = map
+
+      map.on("load", () => {
+        setMapLoaded(true)
+        map.resize()
+      })
+
+      // surface any style/token errors
+      map.on("error", (e) => {
+        const msg = (e?.error as Error)?.message || "Mapbox error"
+        setMapError(msg)
+      })
+
+      // Geolocation (best-effort)
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => map.easeTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 12 }),
+          () => {}
+        )
+      }
+
+      // Keep map sized correctly if container changes
+      const ro = new ResizeObserver(() => {
+        try { map.resize() } catch {}
+      })
+      ro.observe(containerRef.current)
+
+      return () => {
+        ro.disconnect()
+        map.remove()
+        mapRef.current = null
+      }
+    } catch (e: any) {
+      setMapError(e?.message ?? "Impossible d'initialiser la carte.")
     }
   }, [])
 
-  // Draw markers whenever rows or search changes (after map is loaded)
+  // Filtered rows for markers/search
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return rows
@@ -136,6 +158,7 @@ export default function ReservationsMapPage() {
     )
   }, [rows, query])
 
+  // Draw markers + safe fit
   React.useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
@@ -150,7 +173,7 @@ export default function ReservationsMapPage() {
       const wps = (r as any).waypoints as Waypoint[] | undefined
       if (!wps || wps.length < 1) return
 
-      // place a marker at the START (A) of each reservation path
+      // start marker (A)
       const start = wps[0]
       const el = document.createElement("div")
       el.className =
@@ -162,14 +185,12 @@ export default function ReservationsMapPage() {
         .addTo(map)
 
       marker.getElement().style.cursor = "pointer"
-      marker.getElement().addEventListener("click", () => {
-        setSelected(r)
-      })
+      marker.getElement().addEventListener("click", () => setSelected(r))
 
       markersRef.current.push(marker)
       allLngLat.push([start.lng, start.lat])
 
-      // Optionally: add END marker (B)
+      // end marker (B)
       if (wps.length > 1) {
         const end = wps[wps.length - 1]
         const elB = document.createElement("div")
@@ -186,10 +207,8 @@ export default function ReservationsMapPage() {
       }
     })
 
-    // Fit bounds safely
     if (!allLngLat.length) return
 
-    // If only one point, just center on it
     if (allLngLat.length === 1) {
       const [lng, lat] = allLngLat[0] as [number, number]
       requestAnimationFrame(() => {
@@ -200,7 +219,6 @@ export default function ReservationsMapPage() {
       return
     }
 
-    // More than one point: fit bounds, but cap padding to canvas size
     const bounds = new mapboxgl.LngLatBounds(
       allLngLat[0] as [number, number],
       allLngLat[0] as [number, number]
@@ -229,7 +247,7 @@ export default function ReservationsMapPage() {
     })
   }, [filtered, mapLoaded])
 
-  // Resize when the sheets open/close so the map can re-measure its canvas
+  // Resize when sheets open/close so the map can re-measure its canvas
   React.useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -254,7 +272,6 @@ export default function ReservationsMapPage() {
         onClick={() => {
           setSelected(r)
           setOpenList(false)
-          // center map on reservation start if available
           const wps = (r as any).waypoints as Waypoint[] | undefined
           if (wps?.length && mapRef.current) {
             mapRef.current.easeTo({ center: [wps[0].lng, wps[0].lat], zoom: Math.max(mapRef.current.getZoom(), 13) })
@@ -276,7 +293,14 @@ export default function ReservationsMapPage() {
   }
 
   return (
-    <div className="relative h-dvh w-full overflow-hidden">
+    <div className="relative h-dvh min-h-[420px] w-full overflow-hidden">
+      {/* Inline error banner (token/style issues etc.) */}
+      {mapError && (
+        <div className="absolute inset-x-0 top-0 z-30 m-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
+          <div className="text-sm">{mapError}</div>
+        </div>
+      )}
+
       {/* Top bar (lightweight) */}
       <div className="pointer-events-none absolute left-4 top-4 z-20 flex w-[min(720px,calc(100vw-2rem))] flex-wrap gap-2">
         <div className="pointer-events-auto flex items-center gap-2 rounded-lg border bg-background/95 p-2 shadow">
@@ -325,8 +349,8 @@ export default function ReservationsMapPage() {
         </div>
       </div>
 
-      {/* Map container */}
-      <div ref={containerRef} className="absolute inset-0 rounded-md border" />
+      {/* Map container (bg as visual fallback while style loads) */}
+      <div ref={containerRef} className="absolute inset-0 rounded-md border bg-muted" />
 
       {/* Selected reservation details (left sheet) */}
       <Sheet open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>
