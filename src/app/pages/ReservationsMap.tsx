@@ -76,7 +76,8 @@ export default function ReservationsMapPage() {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const markersRef = React.useRef<mapboxgl.Marker[]>([])
   const popupRef = React.useRef<mapboxgl.Popup | null>(null)
-  const clickHandlerRef = React.useRef<((e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => void) | null>(null)
+  // ⬇️ FIX: remove EventData from the type
+  const clickHandlerRef = React.useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null)
   const [mapLoaded, setMapLoaded] = React.useState(false)
   const [mapError, setMapError] = React.useState<string | null>(null)
 
@@ -190,12 +191,7 @@ export default function ReservationsMapPage() {
     return wps
   }, [routeEditMode, draftWps, selected])
 
-  /* ----------------------------- Marker rendering -----------------------------
-     - NO selection: show only "De" for every reservation.
-     - selection (not editing): show De + intermediates + Ar; popup over De.
-     - selection + routeEditMode: show De/intermediates/Ar as **draggable**; hide popup.
-     - other reservations are hidden when a selection exists.
-  ----------------------------------------------------------------------------- */
+  /* ----------------------------- Marker rendering ----------------------------- */
   React.useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
@@ -476,7 +472,8 @@ export default function ReservationsMapPage() {
 
     if (!routeEditMode) return
 
-    const onClick = (e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
+    // ⬇️ FIX: use MapMouseEvent only
+    const onClick = (e: mapboxgl.MapMouseEvent) => {
       const { lng, lat } = e.lngLat
       setDraftWps((prev) => {
         const next = prev ? [...prev] : []
