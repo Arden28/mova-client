@@ -141,6 +141,9 @@ export default function ReservationsMapPage() {
         zoom: 10,
         maxZoom: 19,
         accessToken: MAPBOX_TOKEN,
+
+        // ↓↓↓ This reduces glyph atlas pressure (CJK, emoji)
+        localIdeographFontFamily: "'Noto Sans CJK', 'Arial Unicode MS', 'Segoe UI Symbol', sans-serif",
       })
       mapRef.current = map
 
@@ -153,7 +156,7 @@ export default function ReservationsMapPage() {
           data: dataRef.current, // empty at start; we set it later
         })
 
-        // Start points (A)
+        // We keep just circles (no text) to avoid glyph usage entirely
         map.addLayer({
           id: "resv-start-circles",
           type: "circle",
@@ -161,26 +164,12 @@ export default function ReservationsMapPage() {
           filter: ["==", ["get", "kind"], "start"],
           paint: {
             "circle-radius": 7,
-            "circle-color": "#0ea5e9",
+            "circle-color": "#0ea5e9", // A
             "circle-stroke-color": "#0b7490",
             "circle-stroke-width": 1,
           },
         })
-        map.addLayer({
-          id: "resv-start-labels",
-          type: "symbol",
-          source: "resv-points",
-          filter: ["==", ["get", "kind"], "start"],
-          layout: {
-            "text-field": "A",
-            "text-size": 11,
-            "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
-            "text-offset": [0, 0.8],
-          },
-          paint: { "text-color": "#0f172a" },
-        })
 
-        // End points (B)
         map.addLayer({
           id: "resv-end-circles",
           type: "circle",
@@ -188,23 +177,10 @@ export default function ReservationsMapPage() {
           filter: ["==", ["get", "kind"], "end"],
           paint: {
             "circle-radius": 7,
-            "circle-color": "#a3a3a3",
+            "circle-color": "#a3a3a3", // B
             "circle-stroke-color": "#525252",
             "circle-stroke-width": 1,
           },
-        })
-        map.addLayer({
-          id: "resv-end-labels",
-          type: "symbol",
-          source: "resv-points",
-          filter: ["==", ["get", "kind"], "end"],
-          layout: {
-            "text-field": "B",
-            "text-size": 11,
-            "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
-            "text-offset": [0, 0.8],
-          },
-          paint: { "text-color": "#0f172a" },
         })
 
         // Feature click => select reservation
