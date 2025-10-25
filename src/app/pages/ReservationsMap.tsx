@@ -641,7 +641,7 @@ export default function ReservationsMapPage() {
                 <div className="grid size-8 place-items-center rounded-full bg-white ring-1 ring-black/10">
                   <MapIcon className="h-4 w-4" />
                 </div>
-                <span className="hidden text-sm font-medium sm:inline">Réservations · Carte</span>
+                {/* <span className="hidden text-sm font-medium sm:inline">Réservations · Carte</span> */}
               </div>
 
               <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
