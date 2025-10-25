@@ -186,7 +186,7 @@ export default function AddEditReservationSheet({
         <SheetHeader className="px-6 pt-6">
           <SheetTitle>{editing ? "Modifier la réservation" : "Ajouter une réservation"}</SheetTitle>
           <SheetDescription className="text-sm">
-            Mettez à jour les infos de réservation. Les changements de trajet se font sur la carte.
+            Mettez à jour les infos de réservation. Les changements d’itinéraire se font directement sur la carte.
           </SheetDescription>
         </SheetHeader>
 
@@ -315,8 +315,8 @@ export default function AddEditReservationSheet({
           <Separator className="my-6" />
 
           <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-            Astuce : pour modifier le trajet ou les arrêts, utilisez directement la carte (cliquez/drag sur les
-            marqueurs).
+            Astuce : l’itinéraire se modifie directement sur la carte (cliquer pour ajouter un arrêt, glisser un marqueur
+            pour ajuster).
           </div>
         </div>
 

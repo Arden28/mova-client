@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Map as MapIcon, ListChecks, ArrowLeft, Search as SearchIcon } from "lucide-react"
+import { Map as MapIcon, ListChecks, ArrowLeft, Search as SearchIcon, Undo2, Save, X } from "lucide-react"
 
 import reservationApi, { type UIReservation } from "@/api/reservation"
 import busApi, { type UIBus } from "@/api/bus"
@@ -66,17 +66,26 @@ export default function ReservationsMapPage() {
   const [openEditSheet, setOpenEditSheet] = React.useState(false)
   const [editing, setEditing] = React.useState<UIReservation | null>(null)
 
+  // Route edit mode (live map editing)
+  const [routeEditMode, setRouteEditMode] = React.useState(false)
+  const [draftWps, setDraftWps] = React.useState<Waypoint[] | null>(null)
+  const [draftDistanceKm, setDraftDistanceKm] = React.useState<number | null>(null)
+
   // Map refs/state
   const mapRef = React.useRef<mapboxgl.Map | null>(null)
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const markersRef = React.useRef<mapboxgl.Marker[]>([])
   const popupRef = React.useRef<mapboxgl.Popup | null>(null)
+  const clickHandlerRef = React.useRef<((e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => void) | null>(null)
   const [mapLoaded, setMapLoaded] = React.useState(false)
   const [mapError, setMapError] = React.useState<string | null>(null)
 
-  // Route overlay for selected
+  // Route overlay for selected/draft
   const routeSourceId = React.useRef(`route-src-${Math.random().toString(36).slice(2)}`)
   const routeLayerId = React.useRef(`route-lyr-${Math.random().toString(36).slice(2)}`)
+
+  // Debounce directions
+  const routeDebounceRef = React.useRef<number | null>(null)
 
   React.useEffect(() => {
     let alive = true
@@ -151,6 +160,11 @@ export default function ReservationsMapPage() {
       return () => {
         ro.disconnect()
         popupRef.current?.remove()
+        // remove edit click handler if present
+        if (clickHandlerRef.current) {
+          map.off("click", clickHandlerRef.current as any)
+          clickHandlerRef.current = null
+        }
         map.remove()
         mapRef.current = null
       }
@@ -170,10 +184,17 @@ export default function ReservationsMapPage() {
     )
   }, [rows, query])
 
+  const activeWps: Waypoint[] | undefined = React.useMemo(() => {
+    if (routeEditMode && draftWps) return draftWps
+    const wps = (selected as any)?.waypoints as Waypoint[] | undefined
+    return wps
+  }, [routeEditMode, draftWps, selected])
+
   /* ----------------------------- Marker rendering -----------------------------
-     - NO selection: show only "De" for every reservation (list view).
-     - selection: hide others; show De + intermediates (C/D/…) + Ar for selected;
-                  popup appears above De.
+     - NO selection: show only "De" for every reservation.
+     - selection (not editing): show De + intermediates + Ar; popup over De.
+     - selection + routeEditMode: show De/intermediates/Ar as **draggable**; hide popup.
+     - other reservations are hidden when a selection exists.
   ----------------------------------------------------------------------------- */
   React.useEffect(() => {
     const map = mapRef.current
@@ -187,48 +208,87 @@ export default function ReservationsMapPage() {
 
     const allLngLat: mapboxgl.LngLatLike[] = []
 
-    if (selected) {
-      // ONLY the selected reservation is visible
-      const wps = (selected as any).waypoints as Waypoint[] | undefined
-      if (wps?.length) {
-        // include all for fitting
-        wps.forEach((w) => allLngLat.push([w.lng, w.lat]))
+    if (selected && activeWps?.length) {
+      // include all for fitting
+      activeWps.forEach((w) => allLngLat.push([w.lng, w.lat]))
 
-        // Start ("De")
-        const start = wps[0]
-        const elDe = document.createElement("div")
-        elDe.className =
-          "rounded-full bg-primary text-primary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
-        elDe.textContent = "De"
-        const mDe = new mapboxgl.Marker({ element: elDe }).setLngLat([start.lng, start.lat]).addTo(map)
-        markersRef.current.push(mDe)
+      // Start ("De")
+      const start = activeWps[0]
+      const elDe = document.createElement("div")
+      elDe.className =
+        "rounded-full bg-primary text-primary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
+      elDe.textContent = "De"
+      const mDe = new mapboxgl.Marker({ element: elDe, draggable: routeEditMode })
+        .setLngLat([start.lng, start.lat])
+        .addTo(map)
+      if (routeEditMode) {
+        mDe.on("dragend", () => {
+          const pos = mDe.getLngLat()
+          setDraftWps((prev) => {
+            if (!prev) return prev
+            const next = [...prev]
+            next[0] = { ...(next[0] || {}), lat: pos.lat, lng: pos.lng }
+            return next
+          })
+        })
+      }
+      markersRef.current.push(mDe)
 
-        // Intermediates: C, D, E... (index 1..n-2)
-        if (wps.length > 2) {
-          for (let i = 1; i < wps.length - 1; i++) {
-            const wp = wps[i]
-            const el = document.createElement("div")
-            el.className =
-              "rounded-full bg-muted text-foreground text-[10px] px-1.5 py-0.5 shadow ring-1 ring-black/10"
-            // C for first intermediate => alpha[i+1]
-            el.textContent = alpha[i + 1] ?? String(i + 1)
-            const m = new mapboxgl.Marker({ element: el }).setLngLat([wp.lng, wp.lat]).addTo(map)
-            markersRef.current.push(m)
+      // Intermediates: C, D, E... (index 1..n-2)
+      if (activeWps.length > 2) {
+        for (let i = 1; i < activeWps.length - 1; i++) {
+          const wp = activeWps[i]
+          const el = document.createElement("div")
+          el.className =
+            "rounded-full bg-muted text-foreground text-[10px] px-1.5 py-0.5 shadow ring-1 ring-black/10"
+          // C for first intermediate => alpha[i+1]
+          el.textContent = alpha[i + 1] ?? String(i + 1)
+          const m = new mapboxgl.Marker({ element: el, draggable: routeEditMode })
+            .setLngLat([wp.lng, wp.lat])
+            .addTo(map)
+          if (routeEditMode) {
+            const idx = i
+            m.on("dragend", () => {
+              const pos = m.getLngLat()
+              setDraftWps((prev) => {
+                if (!prev) return prev
+                const next = [...prev]
+                next[idx] = { ...(next[idx] || {}), lat: pos.lat, lng: pos.lng }
+                return next
+              })
+            })
           }
+          markersRef.current.push(m)
         }
+      }
 
-        // End ("Ar")
-        if (wps.length > 1) {
-          const end = wps[wps.length - 1]
-          const elAr = document.createElement("div")
-          elAr.className =
-            "rounded-full bg-secondary text-secondary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
-          elAr.textContent = "Ar"
-          const mAr = new mapboxgl.Marker({ element: elAr }).setLngLat([end.lng, end.lat]).addTo(map)
-          markersRef.current.push(mAr)
+      // End ("Ar")
+      if (activeWps.length > 1) {
+        const end = activeWps[activeWps.length - 1]
+        const elAr = document.createElement("div")
+        elAr.className =
+          "rounded-full bg-secondary text-secondary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
+        elAr.textContent = "Ar"
+        const mAr = new mapboxgl.Marker({ element: elAr, draggable: routeEditMode })
+          .setLngLat([end.lng, end.lat])
+          .addTo(map)
+        if (routeEditMode) {
+          const idx = activeWps.length - 1
+          mAr.on("dragend", () => {
+            const pos = mAr.getLngLat()
+            setDraftWps((prev) => {
+              if (!prev) return prev
+              const next = [...prev]
+              next[idx] = { ...(next[idx] || {}), lat: pos.lat, lng: pos.lng }
+              return next
+            })
+          })
         }
+        markersRef.current.push(mAr)
+      }
 
-        // Popup over **De** (start)
+      // Popup over De (only when NOT editing)
+      if (!routeEditMode && start) {
         const card = document.createElement("div")
         card.className =
           "w-[280px] sm:w-[320px] rounded-lg border bg-background shadow-lg overflow-hidden pointer-events-auto"
@@ -250,8 +310,9 @@ export default function ReservationsMapPage() {
                 (selected.busIds ?? []).join(", ") || "—"
               }</div>
             </div>
-            <div class="mt-3 flex gap-2">
-              <button id="popup-edit" class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent">Modifier</button>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button id="popup-edit-route" class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent">Éditer l’itinéraire</button>
+              <button id="popup-infos" class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent">Infos</button>
               <button id="popup-close" class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-accent">Fermer</button>
             </div>
           </div>
@@ -271,8 +332,14 @@ export default function ReservationsMapPage() {
 
         popupRef.current = popup
 
-        // Attach actions
-        card.querySelector<HTMLButtonElement>("#popup-edit")?.addEventListener("click", () => {
+        // actions
+        card.querySelector<HTMLButtonElement>("#popup-edit-route")?.addEventListener("click", () => {
+          // enter route edit mode with a draft copy
+          const wps = (selected as any)?.waypoints as Waypoint[] | undefined
+          setDraftWps(wps ? JSON.parse(JSON.stringify(wps)) : [])
+          setRouteEditMode(true)
+        })
+        card.querySelector<HTMLButtonElement>("#popup-infos")?.addEventListener("click", () => {
           setEditing(selected)
           setOpenEditSheet(true)
         })
@@ -338,9 +405,9 @@ export default function ReservationsMapPage() {
         } catch {}
       }
     })
-  }, [filtered, selected, mapLoaded])
+  }, [filtered, selected, mapLoaded, routeEditMode, activeWps])
 
-  /* ---------------------- Selected route overlay (driving) ------------------- */
+  /* ---------------------- Selected/draft route overlay (driving) ------------- */
   React.useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
@@ -368,23 +435,18 @@ export default function ReservationsMapPage() {
       if (src) src.setData({ type: "FeatureCollection", features: [] })
     }
 
-    if (!selected) {
+    const wps = activeWps
+    if (!selected || !wps || wps.length < 2) {
       clear()
       return
     }
 
-    const wps = (selected as any).waypoints as Waypoint[] | undefined
-    if (!wps || wps.length < 2) {
-      clear()
-      return
-    }
-
-    let cancelled = false
-    ;(async () => {
+    // debounce + cancel stale
+    if (routeDebounceRef.current) window.clearTimeout(routeDebounceRef.current)
+    routeDebounceRef.current = window.setTimeout(async () => {
       try {
         ensure()
-        const { geometry } = await getDrivingRoute(wps, MAPBOX_TOKEN)
-        if (cancelled) return
+        const { geometry, distanceKm } = await getDrivingRoute(wps, MAPBOX_TOKEN)
         const src = map.getSource(srcId) as mapboxgl.GeoJSONSource | undefined
         if (!src) return
         const data: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
@@ -392,15 +454,50 @@ export default function ReservationsMapPage() {
           features: geometry ? [{ type: "Feature", geometry, properties: {} }] : [],
         }
         src.setData(data)
+        if (routeEditMode) setDraftDistanceKm(distanceKm ?? null)
       } catch {}
-    })()
+    }, 300)
 
     return () => {
-      cancelled = true
+      if (routeDebounceRef.current) window.clearTimeout(routeDebounceRef.current)
     }
-  }, [selected, mapLoaded])
+  }, [activeWps, selected, mapLoaded, routeEditMode])
 
-  // Resize when list or edit sheet open/close
+  /* ---------------------- Map click handler (edit mode) ---------------------- */
+  React.useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    // clean previous handler
+    if (clickHandlerRef.current) {
+      map.off("click", clickHandlerRef.current as any)
+      clickHandlerRef.current = null
+    }
+
+    if (!routeEditMode) return
+
+    const onClick = (e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
+      const { lng, lat } = e.lngLat
+      setDraftWps((prev) => {
+        const next = prev ? [...prev] : []
+        // Append as a new waypoint (before Ar? Simpler: push; users can drag later)
+        next.push({ lat, lng, label: `Point ${next.length + 1}` })
+        return next
+      })
+    }
+
+    map.on("click", onClick as any)
+    clickHandlerRef.current = onClick
+
+    return () => {
+      if (clickHandlerRef.current) {
+        map.off("click", clickHandlerRef.current as any)
+        clickHandlerRef.current = null
+      }
+    }
+  }, [routeEditMode])
+
+  // Resize on UI changes
   React.useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -410,9 +507,9 @@ export default function ReservationsMapPage() {
       } catch {}
     }, 250)
     return () => clearTimeout(t)
-  }, [openList, selected, openEditSheet])
+  }, [openList, selected, openEditSheet, routeEditMode])
 
-  /* -------------------------- Small helpers & UI -------------------------- */
+  /* -------------------------- Helpers -------------------------- */
   const busPlateById = React.useMemo(() => {
     const m = new Map<string, string>()
     for (const b of buses) if (b?.id) m.set(String(b.id), b.plate ?? String(b.id))
@@ -450,6 +547,68 @@ export default function ReservationsMapPage() {
         </div>
       </button>
     )
+  }
+
+  // Commit/cancel edit helpers
+  async function saveDraftRoute() {
+    if (!selected || !draftWps?.length) {
+      setRouteEditMode(false)
+      setDraftWps(null)
+      return
+    }
+    const updated: UIReservation = {
+      ...selected,
+      ...(draftDistanceKm != null ? ({ distanceKm: draftDistanceKm } as any) : {}),
+      ...(draftWps ? ({ waypoints: draftWps } as any) : {}),
+      route: {
+        from: draftWps[0]?.label ?? selected.route?.from ?? "Départ",
+        to: draftWps[draftWps.length - 1]?.label ?? selected.route?.to ?? "Arrivée",
+      },
+    }
+
+    // optimistic update
+    setRows((xs) => xs.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))
+    setSelected(updated)
+
+    // persist (best-effort)
+    try {
+      await reservationApi.update(updated.id, updated)
+      toast.success("Itinéraire enregistré.")
+    } catch (e: any) {
+      toast.error(e?.message ?? "Échec de l’enregistrement de l’itinéraire.")
+    }
+
+    setRouteEditMode(false)
+    setDraftWps(null)
+  }
+
+  function cancelDraftRoute() {
+    setRouteEditMode(false)
+    setDraftWps(null)
+    setDraftDistanceKm(null)
+  }
+
+  function undoLastPoint() {
+    setDraftWps((prev) => {
+      if (!prev || prev.length === 0) return prev
+      const next = [...prev]
+      next.pop()
+      return next
+    })
+  }
+
+  function recenterToDraft() {
+    const map = mapRef.current
+    if (!map) return
+    const wps = (routeEditMode ? draftWps : activeWps) ?? []
+    if (wps.length === 0) return
+    if (wps.length === 1) {
+      map.easeTo({ center: [wps[0].lng, wps[0].lat], zoom: Math.max(map.getZoom(), 13), duration: 400 })
+      return
+    }
+    const b = new mapboxgl.LngLatBounds([wps[0].lng, wps[0].lat], [wps[0].lng, wps[0].lat])
+    wps.forEach((p) => b.extend([p.lng, p.lat]))
+    map.fitBounds(b, { padding: 60, maxZoom: 15, duration: 500 })
   }
 
   return (
@@ -511,7 +670,46 @@ export default function ReservationsMapPage() {
         </div>
       </div>
 
-      {/* Map container (unchanged design) */}
+      {/* Floating Route Editor Toolbar (only when editing) */}
+      {routeEditMode && (
+        <div className="absolute left-4 top-20 z-20 w-[min(640px,calc(100vw-2rem))]">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background/95 p-2 shadow">
+            <Badge variant="secondary" className="px-2">
+              {draftWps?.length ?? 0} points
+            </Badge>
+            <Badge variant="outline" className="px-2">
+              {(draftDistanceKm ?? 0).toLocaleString("fr-FR")} km
+            </Badge>
+
+            <Separator orientation="vertical" className="mx-1 h-5" />
+
+            <Button size="sm" variant="outline" onClick={undoLastPoint}>
+              <Undo2 className="mr-2 h-4 w-4" />
+              Annuler le dernier
+            </Button>
+            <Button size="sm" variant="outline" onClick={recenterToDraft}>
+              Recentrer
+            </Button>
+
+            <div className="ml-auto flex gap-2">
+              <Button size="sm" variant="outline" onClick={cancelDraftRoute}>
+                <X className="mr-2 h-4 w-4" />
+                Annuler
+              </Button>
+              <Button size="sm" onClick={saveDraftRoute}>
+                <Save className="mr-2 h-4 w-4" />
+                Enregistrer l’itinéraire
+              </Button>
+            </div>
+          </div>
+          <div className="mt-2 rounded-md border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            Astuce : cliquez sur la carte pour ajouter un arrêt, faites glisser les marqueurs pour ajuster. Utilisez
+            « Annuler le dernier » pour retirer le dernier point.
+          </div>
+        </div>
+      )}
+
+      {/* Map container */}
       <div ref={containerRef} className="absolute inset-0 bg-muted" style={{ minHeight: "100vh" }} />
 
       {/* Big Add/Edit sheet (opens from popup) */}
