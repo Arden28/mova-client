@@ -1,3 +1,4 @@
+// src/router.tsx
 import * as React from "react"
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom"
 import AuthProvider from "@/context/AuthContext"
@@ -6,6 +7,8 @@ import GuestOnly from "@/components/GuestOnly"
 
 import AppLayout from "@/layouts/AppLayout"
 import AuthLayout from "@/layouts/AuthLayout"
+import MapLayout from "@/layouts/MapLayout"
+import ReservationsMapPage from "@/app/pages/ReservationsMap"
 
 const Overview = React.lazy(() => import("@/app/pages/Overview"))
 const Reservations = React.lazy(() => import("@/app/pages/Reservations"))
@@ -22,7 +25,6 @@ function withSuspense(node: React.ReactNode) {
   return <React.Suspense fallback={null}>{node}</React.Suspense>
 }
 
-// Root element that injects AuthProvider INSIDE the Router context
 function Providers() {
   return (
     <AuthProvider>
@@ -33,8 +35,9 @@ function Providers() {
 
 export const router = createBrowserRouter([
   {
-    element: <Providers />, // now AuthProvider can use useNavigate()
+    element: <Providers />,
     children: [
+      // Public/Auth
       {
         path: "/",
         element: <AuthLayout />,
@@ -49,6 +52,7 @@ export const router = createBrowserRouter([
         ],
       },
 
+      // App (classic layout with sidebar)
       {
         path: "/",
         element: <AppLayout />,
@@ -65,6 +69,20 @@ export const router = createBrowserRouter([
               { path: "notifications", element: withSuspense(<Notifications />) },
               { path: "settings", element: withSuspense(<Settings />) },
               { path: "account", element: withSuspense(<MyAccount />) },
+            ],
+          },
+        ],
+      },
+
+      // Map-first experiences (no AppLayout chrome)
+      {
+        path: "/",
+        element: <MapLayout />,                 
+        children: [
+          {
+            element: <RequireAuth />,
+            children: [
+              { path: "reservations/map", element: withSuspense(<ReservationsMapPage />) }, // stays at same URL
             ],
           },
         ],
