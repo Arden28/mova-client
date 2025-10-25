@@ -25,8 +25,8 @@ export interface Person {
   id: UUID;
   role: Role;
   name: string;
-  phone: string;
-  email?: string;
+  email: string;
+  phone?: string;
   avatar?: string;
   password?: string;
   licenseNo?: string; // For drivers only

@@ -36,7 +36,6 @@ const storage = {
 }
 
 export type Credentials = {
-  phone?: string
   email?: string
   password: string
 }
