@@ -17,7 +17,7 @@ export interface AuthContextShape {
   status: AuthStatus
   user: AppUser | null
   isAuthenticated: boolean
-  loginPhone: (phone: string, password: string) => Promise<void>
+  login: (phone: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
   setUser: React.Dispatch<React.SetStateAction<AppUser | null>>
@@ -72,7 +72,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   }, [])
 
 
-  const loginPhone = useCallback(
+  const login = useCallback(
     async (phone: string, password: string) => {
       setStatus("loading")
       try {
@@ -129,12 +129,12 @@ const logout = useCallback(async () => {
       user,
       status,
       isAuthenticated: status === "authenticated",
-      loginPhone,
+      login,
       logout,
       refresh,
       setUser,
     }),
-    [user, status, loginPhone, logout, refresh]
+    [user, status, login, logout, refresh]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

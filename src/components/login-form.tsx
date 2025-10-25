@@ -10,8 +10,8 @@ export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"form">) {
-  const { loginPhone, status } = useAuth()
-  const [phone, setPhone] = React.useState("")
+  const { login, status } = useAuth()
+  const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
 
@@ -21,7 +21,7 @@ export function LoginForm({
     e.preventDefault()
     setError(null)
     try {
-      await loginPhone(phone.trim(), password)
+      await login(email.trim(), password)
       // navigation happens in AuthContext after success
     } catch (err: any) {
       setError(err?.message || "Échec de la connexion")
@@ -34,21 +34,21 @@ export function LoginForm({
         <div className="flex flex-col items-center gap-1 text-center">
           <h1 className="text-2xl font-bold">Connexion à votre compte</h1>
           <p className="text-muted-foreground text-sm text-balance">
-            Entrez votre numéro de téléphone ci-dessous pour vous connecter à votre compte
+            Entrez votre adresse mail ci-dessous pour vous connecter à votre compte
           </p>
         </div>
 
         <Field>
-          <FieldLabel htmlFor="phone">Numéro de téléphone</FieldLabel>
+          <FieldLabel htmlFor="email">Adresse mail</FieldLabel>
           <Input
-            id="phone"
-            type="tel"
-            placeholder="+242060000000"
+            id="email"
+            type="email"
+            placeholder="brianmwangi@mova-mobility.com"
             required
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            autoComplete="tel"
-            inputMode="tel"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            inputMode="email"
           />
         </Field>
 
