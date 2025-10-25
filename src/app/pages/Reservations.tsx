@@ -18,6 +18,9 @@ import AddEditReservationDialog from "@/components/reservation/AddEditReservatio
 // API clients
 import reservationApi, { type UIReservation, type ReservationStatus } from "@/api/reservation"
 import busApi, { type UIBus } from "@/api/bus"
+import { Button } from "@/components/ui/button"
+import { Link } from "react-router-dom"
+import { MapIcon } from "lucide-react"
 
 /* ------------------------------- utilities -------------------------------- */
 
@@ -304,6 +307,14 @@ export default function ReservationPage() {
           <h1 className="text-xl font-semibold">Réservations</h1>
           <p className="text-sm text-muted-foreground">Suivez les réservations, paiements et voyages planifiés.</p>
         </div>
+
+        {/* Switch to map layout */}
+        <Button asChild variant="outline">
+          <Link to="/reservations/map">
+            <MapIcon className="mr-2 h-4 w-4" />
+            Vue carte
+          </Link>
+        </Button>
       </div>
 
       <DataTable<UIReservation>
