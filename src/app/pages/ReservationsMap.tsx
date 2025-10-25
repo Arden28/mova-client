@@ -27,10 +27,7 @@ import AddEditReservationDialog from "@/components/reservation/AddEditReservatio
 import busApi, { type UIBus } from "@/api/bus"
 
 // Prefer env, fallback to your dev token
-const MAPBOX_TOKEN =
-  (globalThis as any)?.process?.env?.NEXT_PUBLIC_MAPBOX_TOKEN ??
-  (import.meta as any)?.env?.VITE_MAPBOX_TOKEN ??
-  "pk.eyJ1IjoiYXJkZW4tYm91ZXQiLCJhIjoiY21maWgyY3dvMGF1YTJsc2UxYzliNnA0ZCJ9.XC5hXXwEa-NCUPpPtBdWCA"
+const MAPBOX_TOKEN = "pk.eyJ1IjoiYXJkZW4tYm91ZXQiLCJhIjoiY21maWgyY3dvMGF1YTJsc2UxYzliNnA0ZCJ9.XC5hXXwEa-NCUPpPtBdWCA"
 
 mapboxgl.accessToken = MAPBOX_TOKEN
 
@@ -293,7 +290,7 @@ export default function ReservationsMapPage() {
   }
 
   return (
-    <div className="relative h-dvh min-h-[420px] w-full overflow-hidden">
+    <div className="relative w-full">
       {/* Inline error banner (token/style issues etc.) */}
       {mapError && (
         <div className="absolute inset-x-0 top-0 z-30 m-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
