@@ -16,7 +16,7 @@ export default function AppLayout() {
         <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
           <SiteHeader />
           <main className="flex-1 overflow-auto">
-            <div className="flex flex-col flex-1">
+            <div className="flex flex-col flex-1 p-3">
               <React.Suspense fallback={null}>
                 <Outlet />
               </React.Suspense>
