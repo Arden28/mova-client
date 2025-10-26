@@ -456,7 +456,7 @@ export default function MyAccount() {
               </section>
 
               {/* Sessions actives */}
-              <section className="grid gap-4 rounded-lg border p-0">
+              {/* <section className="grid gap-4 rounded-lg border p-0">
                 <div className="flex items-center justify-between p-4">
                   <p className="text-sm font-medium">Sessions actives</p>
                   <Button size="sm" variant="outline" onClick={signOutAll}>
@@ -486,10 +486,10 @@ export default function MyAccount() {
                     ))}
                   </ul>
                 </ScrollArea>
-              </section>
+              </section> */}
 
               {/* Danger zone */}
-              <section className="grid gap-4 rounded-lg border p-4">
+              {/* <section className="grid gap-4 rounded-lg border p-4">
                 <div className="flex items-center gap-2">
                   <Trash2 className="h-4 w-4 text-destructive" />
                   <p className="text-sm font-medium">Zone sensible</p>
@@ -505,7 +505,7 @@ export default function MyAccount() {
                     Supprimer le compte
                   </Button>
                 </div>
-              </section>
+              </section> */}
             </CardContent>
           </Card>
         </TabsContent>

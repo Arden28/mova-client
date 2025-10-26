@@ -14,6 +14,7 @@ import {
 import { MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import useAuth from "@/hooks/useAuth"
+import { Badge } from "@/components/ui/badge"
 
 /* ----------------------------- Tabs (all) ----------------------------- */
 type Tab = { to: string; label: string }
@@ -111,39 +112,49 @@ export function SiteHeader() {
 
         {/* Center nav */}
         <nav className="pointer-events-auto absolute left-1/2 -translate-x-1/2">
-          <ul className="flex items-center gap-6">
+          <ul className="flex items-center gap-2 p-1 bg-muted/50 rounded-md">
             <li>
               <NavLink
                 to="/"
-                className={() =>
+                className={({ isActive }) =>
                   cn(
-                    "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 transition-colors",
-                    isDataActive
-                      ? "text-foreground border-primary"
-                      : "text-muted-foreground border-transparent hover:text-foreground"
+                    "inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                    isActive || (!location.pathname.startsWith("/map") && !location.pathname.startsWith("/locations"))
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                   )
                 }
               >
                 Données
               </NavLink>
             </li>
-            <li>
+            <li className="flex items-center gap-1.5">
               <NavLink
                 to="/map/reservations"
                 className={({ isActive }) =>
                   cn(
-                    "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 transition-colors",
-                    (isActive || isLocations)
-                      ? "text-foreground border-primary"
-                      : "text-muted-foreground border-transparent hover:text-foreground"
+                    "inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                    (isActive || location.pathname.startsWith("/map") || location.pathname.startsWith("/locations"))
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                   )
                 }
               >
                 Locations
               </NavLink>
+
+              {/* Beta tag */}
+              <Badge
+                variant="secondary"
+                className="text-[10px] font-medium uppercase px-1.5 py-0.5 leading-none"
+              >
+                Beta
+              </Badge>
             </li>
           </ul>
         </nav>
+
+
 
         {/* Right side — empty (notifications moved to sidebar) */}
         <div className="ml-auto flex items-center gap-2" />
