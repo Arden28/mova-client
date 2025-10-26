@@ -40,12 +40,7 @@ import api from "@/api/apiService"
 /* ----------------------------------------------------------------------------- 
    ENV
 ----------------------------------------------------------------------------- */
-// const MAPBOX_TOKEN =
-//   (globalThis as any)?.process?.env?.NEXT_PUBLIC_MAPBOX_TOKEN ??
-//   (import.meta as any)?.env?.VITE_MAPBOX_TOKEN ??
-//   ""
 const MAPBOX_TOKEN = "pk.eyJ1IjoiYXJkZW4tYm91ZXQiLCJhIjoiY21maWgyY3dvMGF1YTJsc2UxYzliNnA0ZCJ9.XC5hXXwEa-NCUPpPtBdWCA"
-
 mapboxgl.accessToken = MAPBOX_TOKEN
 
 /* --------------------------------- Helpers --------------------------------- */
@@ -427,8 +422,11 @@ function MapPicker({
         )}
       </div>
 
-      {/* Carte */}
-      <div ref={containerRef} className="h-[320px] w-full rounded-lg border" />
+      {/* Carte — bigger & responsive */}
+      <div
+        ref={containerRef}
+        className="h-[360px] sm:h-[420px] md:h-[500px] w-full rounded-lg border"
+      />
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
@@ -467,19 +465,16 @@ export default function AddEditReservationDialog({
   onSubmit,
   trips,
   buses,
-  
 }: Props) {
   const [form, setForm] = React.useState<Partial<UIReservation>>({})
   const [waypoints, setWaypoints] = React.useState<Waypoint[]>([])
   const [busIds, setBusIds] = React.useState<string[]>([])
   const [routeKm, setRouteKm] = React.useState<number | null>(null)
 
-  // Pricing inputs/state (UI moved under "Détails de la réservation")
   const [vehicleType, setVehicleType] = React.useState<VehicleType>("hiace")
   const [eventType, setEventType] = React.useState<EventType>("none")
   const [quoting, setQuoting] = React.useState(false)
 
-  // Options bus
   const busOptions = React.useMemo<MultiSelectOption[]>(() => {
     const uniq: Record<string, boolean> = {}
     return (buses ?? [])
@@ -535,7 +530,6 @@ export default function AddEditReservationDialog({
   const distanceKmDisplay = routeKm ?? havKm
   const busCount = busIds.length || 1
 
-  /* --------------------------- Pricing integration -------------------------- */
   React.useEffect(() => {
     let cancel = false
     const canQuote =
@@ -620,10 +614,10 @@ export default function AddEditReservationDialog({
       <DialogContent
         className="
           p-0
-          w-[min(100vw-1rem,1000px)]
-          h-[90vh]
-          max-h-[calc(100dvh-2rem)]
           sm:max-w-none
+          w-[min(100vw-0.5rem,1600px)]
+          h-[95vh]
+          max-h-[calc(100dvh-1rem)]
           flex flex-col
         "
       >
@@ -667,7 +661,7 @@ export default function AddEditReservationDialog({
                 onRouteKmChange={setRouteKm}
               />
             ) : (
-              <div className="h-[320px] w-full rounded-lg border grid place-items-center text-sm text-muted-foreground">
+              <div className="h-[360px] sm:h-[420px] md:h-[500px] w-full rounded-lg border grid place-items-center text-sm text-muted-foreground">
                 Carte désactivée — configurez d’abord <code>VITE_MAPBOX_TOKEN</code>.
               </div>
             )}
@@ -765,11 +759,10 @@ export default function AddEditReservationDialog({
 
           <Separator />
 
-          {/* Détails réservation (includes vehicle/event + total input group) */}
+          {/* Détails réservation */}
           <div className="space-y-3 py-4">
             <h3 className="text-sm font-medium text-muted-foreground">Détails de la réservation</h3>
             <div className="grid gap-4 sm:grid-cols-2">
-              {/* Seats */}
               <div className="grid gap-1.5">
                 <Label>Sièges</Label>
                 <Input
@@ -780,7 +773,6 @@ export default function AddEditReservationDialog({
                 />
               </div>
 
-              {/* Vehicle type */}
               <div className="grid gap-1.5">
                 <Label>Type de véhicule</Label>
                 <select
@@ -793,7 +785,6 @@ export default function AddEditReservationDialog({
                 </select>
               </div>
 
-              {/* Event type */}
               <div className="grid gap-1.5">
                 <Label>Évènement</Label>
                 <select
@@ -808,7 +799,6 @@ export default function AddEditReservationDialog({
                 </select>
               </div>
 
-              {/* Total (editable) with input group */}
               <div className="grid gap-1.5">
                 <Label>Total</Label>
                 <div className="relative">
@@ -825,7 +815,6 @@ export default function AddEditReservationDialog({
                 </div>
               </div>
 
-              {/* Status */}
               <div className="grid gap-1.5 sm:col-span-2">
                 <Label>Statut</Label>
                 <div className="grid grid-cols-3 gap-2">
