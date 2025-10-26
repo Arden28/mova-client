@@ -1,3 +1,4 @@
+// src/app/pages/ReservationsMap.tsx
 "use client"
 
 import * as React from "react"
@@ -63,36 +64,62 @@ async function getDrivingRoute(pts: Waypoint[], token: string): Promise<Directio
 
 const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")
 
-/* ------------------------------ Geocoding (CG) ---------------------------- */
+/* ------------------------------ Geocoding (smart) ---------------------------- */
 // Republic of the Congo bounding box (approx): [minLon, minLat, maxLon, maxLat]
-const CG_BBOX: [number, number, number, number] = [11.1, -5.5, 18.8, 3.8]
+const CG_BBOX: [number, number, number, number] = [11.0, -5.8, 18.9, 3.9]
 type GeoResult = { label: string; lat: number; lng: number }
 
-async function geocodeForwardCG(
-  q: string,
-  map: mapboxgl.Map | null,
-  token: string
-): Promise<GeoResult[]> {
-  if (!q || !token) return []
-  const center = map?.getCenter()
-  const prox = center ? `&proximity=${center.lng},${center.lat}` : ""
-  const bbox = `&bbox=${CG_BBOX.join(",")}`
-  // Restrict by country + bbox + fuzzy + French labels
-  const url =
-    `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
-    `?access_token=${token}&limit=8&language=fr&fuzzyMatch=true${prox}${bbox}&country=CG` +
-    `&types=address,street,place,locality,neighborhood,poi`
+type GeoAttempt =
+  | "pays+bbox"
+  | "pays"
+  | "proximité"
 
+async function fetchMapbox(url: string): Promise<GeoResult[]> {
   const r = await fetch(url)
   if (!r.ok) return []
   const j: { features?: { place_name?: string; center?: [number, number] }[] } = await r.json()
   return (j.features ?? [])
-    .filter((f) => Array.isArray(f.center) && typeof f.center[0] === "number" && typeof f.center[1] === "number")
+    .filter((f) => Array.isArray(f.center))
     .map((f) => ({
       label: f.place_name || "Lieu",
       lng: f.center![0],
       lat: f.center![1],
     }))
+}
+
+function buildTypesParam() {
+  // include street/address and broader place types
+  return "address,street,place,locality,neighborhood,poi,region,district"
+}
+
+async function geocodeForwardSmart(
+  q: string,
+  map: mapboxgl.Map | null,
+  token: string
+): Promise<{ results: GeoResult[]; attempt: GeoAttempt | null }> {
+  if (!q || !token) return { results: [], attempt: null }
+  const encQ = encodeURIComponent(q)
+  const center = map?.getCenter()
+  const prox = center ? `&proximity=${center.lng},${center.lat}` : ""
+  const base =
+    `https://api.mapbox.com/geocoding/v5/mapbox.places/${encQ}.json` +
+    `?access_token=${token}` +
+    `&limit=10&language=fr&fuzzyMatch=true&autocomplete=true&types=${buildTypesParam()}`
+
+  // 1) Strict: country + bbox
+  const url1 = `${base}&country=CG&bbox=${CG_BBOX.join(",")}${prox}`
+  let results = await fetchMapbox(url1)
+  if (results.length > 0) return { results, attempt: "pays+bbox" }
+
+  // 2) Relax bbox: country only
+  const url2 = `${base}&country=CG${prox}`
+  results = await fetchMapbox(url2)
+  if (results.length > 0) return { results, attempt: "pays" }
+
+  // 3) Last resort: no country, bias with proximity
+  const url3 = `${base}${prox}`
+  results = await fetchMapbox(url3)
+  return { results, attempt: results.length > 0 ? "proximité" : null }
 }
 
 export default function ReservationsMapPage() {
@@ -138,6 +165,7 @@ export default function ReservationsMapPage() {
   const [placeQuery, setPlaceQuery] = React.useState("")
   const [placeResults, setPlaceResults] = React.useState<GeoResult[]>([])
   const [placeLoading, setPlaceLoading] = React.useState(false)
+  const [placeAttempt, setPlaceAttempt] = React.useState<GeoAttempt | null>(null)
   const searchMarkerRef = React.useRef<mapboxgl.Marker | null>(null)
 
   React.useEffect(() => {
@@ -332,7 +360,7 @@ export default function ReservationsMapPage() {
         markersRef.current.push(mAr)
       }
 
-      // Popup (view mode)
+      // Popup (view mode) omitted here for brevity—unchanged from previous step
       if (!routeEditMode && start) {
         const card = document.createElement("div")
         card.className =
@@ -362,7 +390,6 @@ export default function ReservationsMapPage() {
             </div>
           </div>
         `
-
         const map = mapRef.current!
         const popup = new mapboxgl.Popup({
           closeButton: false,
@@ -648,28 +675,30 @@ export default function ReservationsMapPage() {
   }
 
   /* -------------------------- Place search logic --------------------------- */
-  // Debounced search
   React.useEffect(() => {
     const q = placeQuery.trim()
     if (!placeBarOpen) {
       setPlaceResults([])
       setPlaceLoading(false)
+      setPlaceAttempt(null)
       return
     }
     if (!q) {
       setPlaceResults([])
       setPlaceLoading(false)
+      setPlaceAttempt(null)
       return
     }
     const id = window.setTimeout(async () => {
       setPlaceLoading(true)
       try {
-        const res = await geocodeForwardCG(q, mapRef.current, MAPBOX_TOKEN)
-        setPlaceResults(res)
+        const { results, attempt } = await geocodeForwardSmart(q, mapRef.current, MAPBOX_TOKEN)
+        setPlaceResults(results)
+        setPlaceAttempt(attempt)
       } finally {
         setPlaceLoading(false)
       }
-    }, 300)
+    }, 350)
     return () => window.clearTimeout(id)
   }, [placeQuery, placeBarOpen])
 
@@ -678,10 +707,9 @@ export default function ReservationsMapPage() {
     if (!map) return
     // Remove previous marker
     searchMarkerRef.current?.remove()
-    // Custom marker
+    // Custom white-circle marker
     const el = document.createElement("div")
-    el.className =
-      "grid place-items-center rounded-full bg-white ring-1 ring-black/10 shadow size-8"
+    el.className = "grid place-items-center rounded-full bg-white ring-1 ring-black/10 shadow size-8"
     const dot = document.createElement("div")
     dot.className = "size-3 rounded-full bg-primary"
     el.appendChild(dot)
@@ -689,12 +717,11 @@ export default function ReservationsMapPage() {
     const mk = new mapboxgl.Marker({ element: el }).setLngLat([r.lng, r.lat]).addTo(map)
     searchMarkerRef.current = mk
 
-    // Fly to
     map.easeTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 15), duration: 600 })
   }
 
   return (
-    <div className="relative h-full w-full min-h-0">
+    <div className="relative h/full w-full min-h-0">
       {/* Inline error banner */}
       {mapError && (
         <div className="absolute inset-x-0 top-0 z-30 m-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
@@ -724,7 +751,6 @@ export default function ReservationsMapPage() {
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="pointer-events-auto mt-0 flex w-[90vw] max-w-[720px] items-center gap-2 rounded-xl border bg-background/95 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:backdrop-blur"
             >
-              {/* Left: icon + title (title hidden on xs) */}
               <div className="flex items-center gap-2 pl-1 pr-1">
                 <div className="grid size-8 place-items-center rounded-full bg-white ring-1 ring-black/10">
                   <MapIcon className="h-4 w-4" />
@@ -734,7 +760,6 @@ export default function ReservationsMapPage() {
 
               <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
 
-              {/* Search in reservations */}
               <div className="relative min-w-0 flex-1">
                 <SearchIcon className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -745,7 +770,6 @@ export default function ReservationsMapPage() {
                 />
               </div>
 
-              {/* List sheet trigger */}
               <Sheet open={openList} onOpenChange={setOpenList}>
                 <SheetTrigger asChild>
                   <Button size="icon" variant="outline" className="shrink-0">
@@ -772,7 +796,6 @@ export default function ReservationsMapPage() {
                 </SheetContent>
               </Sheet>
 
-              {/* Back to list (icon on xs) */}
               <Button asChild size="sm" variant="ghost" className="shrink-0">
                 <Link to="/reservations" className="flex items-center gap-2">
                   <ArrowLeft className="h-4 w-4" />
@@ -780,7 +803,6 @@ export default function ReservationsMapPage() {
                 </Link>
               </Button>
 
-              {/* Close toolbar */}
               <Button
                 type="button"
                 size="icon"
@@ -796,7 +818,7 @@ export default function ReservationsMapPage() {
         </AnimatePresence>
       </div>
 
-      {/* SECOND FAB + Animated Place Search (restricted to Congo-Brazzaville) */}
+      {/* SECOND FAB + Animated Place Search (smart, Congo-first) */}
       <div className="absolute left-4 top-20 z-20">
         {!placeBarOpen && (
           <button
@@ -827,7 +849,7 @@ export default function ReservationsMapPage() {
                   <Input
                     value={placeQuery}
                     onChange={(e) => setPlaceQuery(e.target.value)}
-                    placeholder="Chercher un lieu dans le Congo-Brazzaville (rue, adresse, ville…)"
+                    placeholder="Chercher un lieu (rue/adresse) — priorité Congo-Brazzaville"
                     className="w-full pl-8"
                   />
                 </div>
@@ -841,13 +863,14 @@ export default function ReservationsMapPage() {
                     setPlaceBarOpen(false)
                     setPlaceQuery("")
                     setPlaceResults([])
+                    setPlaceAttempt(null)
                   }}
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
 
-              {/* Results dropdown under the bar */}
+              {/* Results */}
               <div className="relative">
                 <div className="absolute left-0 right-0 z-10 mt-2 rounded-md border bg-popover p-1 shadow">
                   {placeLoading && (
@@ -858,7 +881,7 @@ export default function ReservationsMapPage() {
                   )}
                   {!placeLoading && placeQuery && placeResults.length === 0 && (
                     <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                      Aucun résultat (essayez un autre libellé).
+                      Aucun résultat — essayez un autre libellé (ex: “Avenue ...”, “Boulevard ...”).
                     </div>
                   )}
                   {!placeLoading &&
@@ -875,6 +898,15 @@ export default function ReservationsMapPage() {
                     ))}
                 </div>
               </div>
+
+              {/* tiny hint of which strategy matched */}
+              {placeAttempt && (
+                <div className="mt-2 pl-1 text-[11px] leading-4 text-muted-foreground">
+                  Résultats via <span className="font-medium">
+                    {placeAttempt === "pays+bbox" ? "Congo + zone" : placeAttempt === "pays" ? "Congo" : "proximité"}
+                  </span>.
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
