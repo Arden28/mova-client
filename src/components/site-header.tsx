@@ -3,6 +3,7 @@
 
 import * as React from "react"
 import { NavLink, useLocation } from "react-router-dom"
+import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MoreHorizontal } from "lucide-react"
@@ -83,7 +84,8 @@ export function SiteHeader() {
     <>
       {/* Top header */}
       <header className="relative z-40 flex h-[56px] items-center border-b bg-background/80 backdrop-blur-md px-4 lg:px-6">
-        {/* No SidebarTrigger (sidebar is fixed compact) */}
+        {/* Mobile-only trigger to open the off-canvas sidebar */}
+        <SidebarTrigger className="-ml-1 mr-2 md:hidden" />
 
         {/* Center nav */}
         <nav className="pointer-events-auto absolute left-1/2 -translate-x-1/2">
@@ -121,7 +123,7 @@ export function SiteHeader() {
           </ul>
         </nav>
 
-        {/* Right side — intentionally empty (notifications moved to sidebar) */}
+        {/* Right side — empty (notifications moved to sidebar) */}
         <div className="ml-auto flex items-center gap-2" />
       </header>
 
