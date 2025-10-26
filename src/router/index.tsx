@@ -94,7 +94,7 @@ export const router = createBrowserRouter([
                   { path: "overview", element: withSuspense(<Overview />) },
                   { path: "people", element: withSuspense(<People />) },
                   { path: "staff", element: withSuspense(<Staff />) },
-                  { path: "settings", element: withSuspense(<Settings />) },
+                  // { path: "settings", element: withSuspense(<Settings />) },
                 ],
               },
             ],

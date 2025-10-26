@@ -10,7 +10,7 @@ function RequireAuth() {
 
   // If not authenticated, redirect to login immediately
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />
+    return <Navigate to="/auth/login" replace state={{ from: location }} />
   }
 
   return <Outlet />
