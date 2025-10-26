@@ -57,23 +57,23 @@ type AddEditPersonDialogProps = {
   open: boolean
   onOpenChange: (v: boolean) => void
   editing: Person | null
-  onSubmit: (p: Person & { password?: string }) => void
+  onSubmit: (p: Person) => void
 }
 
 function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditPersonDialogProps) {
-  const [form, setForm] = React.useState<Partial<Person & { password?: string }>>({})
+  const [form, setForm] = React.useState<Partial<Person>>({})
 
   React.useEffect(() => {
     setForm(editing ?? { role: "driver" })
   }, [editing, open])
 
-  function set<K extends keyof (Person & { password?: string })>(key: K, val: (Person & { password?: string })[K]) {
+  function set<K extends keyof Person>(key: K, val: Person[K]) {
     setForm((prev) => ({ ...prev, [key]: val }))
   }
 
   function handleSubmit() {
     const role = (form.role as PersonRole) ?? "driver"
-    const payload: Person & { password?: string } = {
+    const payload: Person = {
       id: editing?.id ?? crypto.randomUUID(),
       role,
       name: String(form.name ?? "").trim(),
@@ -82,7 +82,6 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
       licenseNo: role === "driver" ? (form.licenseNo ? String(form.licenseNo).trim() : undefined) : undefined,
       createdAt: editing?.createdAt ?? undefined,
       status: editing?.status ?? undefined,
-      password: form.password ? String(form.password) : undefined,
     }
 
     if (!payload.name) {
@@ -143,14 +142,6 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
                 onChange={(e) => set("licenseNo", e.target.value as any)}
                 placeholder="Ex: DL-123456"
               />
-            </div>
-          )}
-
-          {/* Password only on create (optionnel) */}
-          {!editing && (
-            <div className="grid gap-1.5">
-              <Label>Mot de passe (optionnel)</Label>
-              <Input type="password" value={(form as any).password ?? ""} onChange={(e) => set("password", e.target.value as any)} />
             </div>
           )}
         </div>
