@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { IconBell } from "@tabler/icons-react"
-import { Inbox, CheckCheck, Dot } from "lucide-react"
+import { Inbox, CheckCheck, Dot, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type NotificationItem = {
@@ -45,15 +45,190 @@ function EmptyState({
   )
 }
 
+/* ----------------------------- Tabs (data) ----------------------------- */
+
+const TABS = [
+  { to: "/bus", label: "Bus" },
+  { to: "/chauffeurs", label: "Chauffeurs" },
+  { to: "/controleurs", label: "Contrôleurs" },
+  { to: "/proprietaires", label: "Propriétaires de bus" },
+  { to: "/clients", label: "Clients" },
+  { to: "/locations", label: "Locations" },
+  { to: "/staff", label: "Staff" },
+] as const
+
+function TabLink({
+  to,
+  label,
+  hasLeftBorder,
+  innerRef,
+}: {
+  to: string
+  label: string
+  hasLeftBorder?: boolean
+  innerRef?: (el: HTMLAnchorElement | null) => void
+}) {
+  return (
+    <NavLink
+      to={to}
+      ref={innerRef as any}
+      className={({ isActive }) =>
+        cn(
+          "px-3 inline-flex h-10 items-center select-none transition-colors rounded-none",
+          // baseline text + hover for all states
+          "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          // left divider (replaces separators)
+          hasLeftBorder && "border-l border-border",
+          // active state: lift above bottom border & remove it visually
+          isActive &&
+            "bg-white text-foreground border-x border-t border-border -mb-[1px] relative z-10"
+        )
+      }
+    >
+      {label}
+    </NavLink>
+  )
+}
+
+/* ----------------------- Responsive overflow headbar ---------------------- */
+
+function ResponsiveHeadbar() {
+  const containerRef = React.useRef<HTMLDivElement | null>(null)
+  const dropdownMeasureRef = React.useRef<HTMLButtonElement | null>(null)
+
+  // Keep refs for each tab to measure width (with borders applied)
+  const itemRefs = React.useRef<(HTMLAnchorElement | null)[]>([])
+  itemRefs.current = []
+
+  const [visibleCount, setVisibleCount] = React.useState<number>(TABS.length)
+
+  const measure = React.useCallback(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const available = container.clientWidth
+    const ddW = dropdownMeasureRef.current?.offsetWidth ?? 64 // reserve for "Plus" when needed
+
+    let used = 0
+    let count = 0
+
+    for (let i = 0; i < TABS.length; i++) {
+      const el = itemRefs.current[i]
+      if (!el) continue
+      const w = el.offsetWidth
+
+      const remaining = TABS.length - (i + 1)
+      const needsDropdown = remaining > 0
+      const nextUsed = used + w + (needsDropdown ? ddW : 0)
+
+      if (nextUsed <= available) {
+        used += w
+        count++
+      } else {
+        break
+      }
+    }
+
+    if (count === 0) count = 1 // always show at least one tab
+    setVisibleCount(count)
+  }, [])
+
+  React.useEffect(() => {
+    if (!containerRef.current) return
+    const ro = new ResizeObserver(() => measure())
+    ro.observe(containerRef.current)
+    window.addEventListener("resize", measure)
+    const t = setTimeout(measure, 0)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener("resize", measure)
+      clearTimeout(t)
+    }
+  }, [measure])
+
+  const visible = TABS.slice(0, visibleCount)
+  const overflow = TABS.slice(visibleCount)
+
+  return (
+    <div className="z-30 w-full border-b bg-primary/5">
+      {/* measuring (hidden) */}
+      <div className="absolute -z-10 -mt-[9999px] opacity-0 pointer-events-none">
+        <div className="flex h-10 items-stretch gap-0 px-4 text-sm">
+          <Button ref={dropdownMeasureRef} variant="ghost" size="sm" className="h-10 px-3 rounded-none">
+            Plus <ChevronDown className="ml-1 h-4 w-4" />
+          </Button>
+          {TABS.map((t, i) => (
+            <TabLink
+              key={`m-${t.to}`}
+              to={t.to}
+              label={t.label}
+              hasLeftBorder={i > 0}
+              innerRef={() => {}}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* visible row */}
+      <div ref={containerRef} className="w-full">
+        <div className="flex h-10 items-stretch gap-0 px-4 text-sm">
+          {visible.map((t, i) => (
+            <TabLink
+              key={t.to}
+              to={t.to}
+              label={t.label}
+              hasLeftBorder={i > 0}
+              innerRef={(el) => {
+                itemRefs.current[i] = el
+              }}
+            />
+          ))}
+
+          {/* Overflow dropdown */}
+          {overflow.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "h-10 px-3 rounded-none hover:bg-muted/60",
+                    // left divider to replace separator
+                    (visible.length > 0) && "border-l border-border"
+                  )}
+                  ref={dropdownMeasureRef}
+                >
+                  Plus <ChevronDown className="ml-1 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="p-1 min-w-56">
+                {overflow.map((t) => (
+                  <DropdownMenuItem key={t.to} asChild className="rounded-[6px]">
+                    <NavLink to={t.to} className="w-full">
+                      {t.label}
+                    </NavLink>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* --------------------------------- Header --------------------------------- */
+
 export function SiteHeader() {
   const [notifications, setNotifications] = React.useState<NotificationItem[]>([])
   const unreadCount = notifications.filter((n) => n.unread).length
   const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))
 
-  // --- Center nav logic: underline active; Données active by default ---
+  // Center nav: underline active; Données active by default
   const location = useLocation()
   const isLocations = location.pathname.startsWith("/locations")
-  const isDataActive = !isLocations // Données is active unless on /locations
+  const isDataActive = !isLocations
 
   return (
     <>
@@ -65,7 +240,6 @@ export function SiteHeader() {
         <nav className="pointer-events-auto absolute left-1/2 -translate-x-1/2">
           <ul className="flex items-center gap-6">
             <li>
-              {/* Données is visually active by default (unless on /locations) */}
               <NavLink
                 to="/data"
                 className={() =>
@@ -189,48 +363,8 @@ export function SiteHeader() {
         </div>
       </header>
 
-      {/* Secondary headbar */}
-      <div className="z-30 w-full border-b bg-primary/5">
-        <ScrollArea className="w-full">
-          <div className="flex h-10 items-stretch gap-2 px-4 text-sm">
-            <TabLink to="/bus" label="Bus" />
-            <Separator orientation="vertical" className="h-6 self-center" />
-            <TabLink to="/chauffeurs" label="Chauffeurs" />
-            <Separator orientation="vertical" className="h-6 self-center" />
-            <TabLink to="/controleurs" label="Contrôleurs" />
-            <Separator orientation="vertical" className="h-6 self-center" />
-            <TabLink to="/proprietaires" label="Propriétaires de bus" />
-            <Separator orientation="vertical" className="h-6 self-center" />
-            <TabLink to="/clients" label="Clients" />
-            <Separator orientation="vertical" className="h-6 self-center" />
-            <TabLink to="/locations" label="Locations" />
-            <Separator orientation="vertical" className="h-6 self-center" />
-            <TabLink to="/staff" label="Staff" />
-          </div>
-        </ScrollArea>
-      </div>
+      {/* Secondary headbar with responsive overflow (left borders, no separators) */}
+      <ResponsiveHeadbar />
     </>
-  )
-}
-
-/* --- Helpers --- */
-function TabLink({ to, label }: { to: string; label: string }) {
-  // Active style: bg-white + border top/left/right, no bottom. Remove bottom seam with -mb-[1px].
-  return (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        cn(
-          "px-3 inline-flex items-center",
-          "rounded-none select-none transition-colors",
-          "hover:bg-muted/60 text-muted-foreground",
-          isActive
-            ? "bg-white text-foreground border-x border-t border-border -mb-[1px]"
-            : "border-transparent"
-        )
-      }
-    >
-      {label}
-    </NavLink>
   )
 }
