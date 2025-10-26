@@ -323,7 +323,7 @@ export default function ReservationPage() {
 
         {/* Switch to map layout */}
         <Button asChild variant="outline">
-          <Link to="/reservations/map">
+          <Link to="/map/reservations">
             <MapIcon className="mr-2 h-4 w-4" />
             Vue carte
           </Link>
