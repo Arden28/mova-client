@@ -660,7 +660,7 @@ export default function ReservationsMapPage() {
           {r.route?.from ?? "—"} → {r.route?.to ?? "—"}
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          Bus: {(r.busIds ?? []).map((id) => busPlateById.get(id) ?? id).join(", ") || "—"} · Sièges: {r.seats ?? "—"}
+          Bus: {(r.busIds ?? []).map((id) => busPlateById.get(String(id)) ?? String(id)).join(", ") || "—"} · Sièges: {r.seats ?? "—"}
         </div>
       </button>
     )
