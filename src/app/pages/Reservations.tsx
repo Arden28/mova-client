@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 
 import type { ColumnDef } from "@tanstack/react-table"
-import { DataTable, makeDrawerTriggerColumn } from "@/components/data-table"
+import { DataTable } from "@/components/data-table"
 import type { FilterConfig } from "@/components/data-table"
 
 import ImportDialog from "@/components/common/ImportDialog"
@@ -21,6 +21,7 @@ import busApi, { type UIBus } from "@/api/bus"
 import { Button } from "@/components/ui/button"
 import { Link } from "react-router-dom"
 import { MapIcon } from "lucide-react"
+import { makeDrawerTriggerColumn } from "@/components/data-table-helpers"
 
 /* ------------------------------- utilities -------------------------------- */
 
@@ -329,7 +330,7 @@ export default function ReservationPage() {
         onImport={() => setOpenImport(true)}
         importLabel="Importer"
         renderRowActions={renderRowActions}
-        drawer={{ triggerField: "code" }}
+        // drawer={{ triggerField: "code" }}
         onDeleteSelected={async (selected) => {
           if (selected.length === 0) return
           const prev = rows
