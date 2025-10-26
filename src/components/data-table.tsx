@@ -2,7 +2,6 @@
 "use client"
 
 import * as React from "react"
-
 import type { ColumnDef, SortingState } from "@tanstack/react-table"
 import {
   flexRender,
@@ -12,7 +11,23 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 
-import { IconChevronLeft, IconChevronRight, IconChevronsLeft, IconChevronsRight, IconDotsVertical, IconPlus, IconUpload, IconSearch, IconTrash } from "@tabler/icons-react"
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconChevronsLeft,
+  IconChevronsRight,
+  IconDotsVertical,
+  IconPlus,
+  IconUpload,
+  IconSearch,
+  IconTrash,
+  IconTable,
+  IconGridDots,
+  IconX,
+  IconFilter,
+  IconRefresh,
+  IconChevronDown,
+} from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -41,7 +56,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -59,6 +78,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { cn } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------- */
 /*                                  Types                                     */
@@ -72,6 +92,14 @@ export type FilterConfig<T> = {
   defaultValue?: string
 }
 
+export type GroupByConfig<T> = {
+  id: string
+  label: string
+  accessor: (row: T) => string
+  // Optional sort function for group labels
+  sortGroups?: (a: string, b: string) => number
+}
+
 export type DrawerConfig<T> = {
   triggerField?: keyof T
   renderTrigger?: (row: T) => React.ReactNode
@@ -79,6 +107,8 @@ export type DrawerConfig<T> = {
   renderBody?: (row: T) => React.ReactNode
   renderFooter?: (row: T) => React.ReactNode
 }
+
+type ViewMode = "list" | "grid"
 
 export type DataTableProps<T extends object> = {
   data: T[]
@@ -88,6 +118,12 @@ export type DataTableProps<T extends object> = {
   drag?: { getId: (row: T) => string }
   searchable?: { placeholder?: string; fields: (keyof T)[] }
   filters?: FilterConfig<T>[]
+  /** Optional grouping (dynamic). If omitted, Group By control is hidden. */
+  groupBy?: GroupByConfig<T>[]
+  /** Optional initial view; default "list" */
+  initialView?: ViewMode
+  /** Grid view renderer; if omitted, a generic card is rendered from visible columns */
+  renderCard?: (row: T) => React.ReactNode
   onAdd?: () => void
   addLabel?: string
   onImport?: () => void
@@ -97,7 +133,7 @@ export type DataTableProps<T extends object> = {
   drawer?: DrawerConfig<T>
   /** bulk delete handler; called after user confirms */
   onDeleteSelected?: (rows: T[]) => void
-  loading?: boolean;
+  loading?: boolean
 }
 
 /* -------------------------------------------------------------------------- */
@@ -111,6 +147,9 @@ export function DataTable<T extends object>({
   // drag (ignored),
   searchable,
   filters,
+  groupBy,
+  initialView = "list",
+  renderCard,
   onAdd,
   addLabel = "Add",
   onImport,
@@ -122,25 +161,49 @@ export function DataTable<T extends object>({
 }: DataTableProps<T>) {
   const ALL_TOKEN = "__ALL__" // Radix Select can't use empty string
 
-  // Local rows
+  /* ------------------------------- Local rows ------------------------------- */
   const [data, setData] = React.useState<T[]>(() => externalData)
   React.useEffect(() => setData(externalData), [externalData])
 
-  // Table UI
+  /* --------------------------------- Table --------------------------------- */
   const [openDelete, setOpenDelete] = React.useState(false)
   const [rowSelection, setRowSelection] = React.useState({})
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 10 })
+  const [view, setView] = React.useState<ViewMode>(initialView)
 
-  // Debounced search (smooth typing)
+  /* ------------------------------ Search (UX) ------------------------------- */
+  const [searchOpen, setSearchOpen] = React.useState(false)
   const [searchInput, setSearchInput] = React.useState("")
   const [search, setSearch] = React.useState("")
+  const searchInputRef = React.useRef<HTMLInputElement | null>(null)
+  const lastTypeTs = React.useRef(0)
+
+  // Debounce
   React.useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 180)
     return () => clearTimeout(t)
   }, [searchInput])
 
-  // Filters
+  // Preserve focus & caret reliably
+  function focusSearchSafely() {
+    const el = searchInputRef.current
+    if (!el) return
+    requestAnimationFrame(() => {
+      el.focus({ preventScroll: true })
+      // Keep caret at end when toggling open
+      try {
+        const len = el.value.length
+        el.setSelectionRange(len, len)
+      } catch {}
+    })
+  }
+
+  React.useEffect(() => {
+    if (searchOpen) focusSearchSafely()
+  }, [searchOpen])
+
+  /* -------------------------------- Filters -------------------------------- */
   const [filterSelections, setFilterSelections] = React.useState<Record<string, string>>(
     () =>
       (filters ?? []).reduce((acc, f) => {
@@ -150,6 +213,9 @@ export function DataTable<T extends object>({
   )
   function setFilter(id: string, value: string) {
     setFilterSelections((prev) => ({ ...prev, [id]: value }))
+  }
+  function clearAllFilters() {
+    setFilterSelections({})
   }
 
   // Faceted counts (respects other filters + search)
@@ -183,7 +249,7 @@ export function DataTable<T extends object>({
     return map
   }, [data, filters, filterSelections, search, searchable])
 
-  // Final filtered rows
+  /* ------------------------- Final filtered rows (same) ------------------------ */
   const filteredRows = React.useMemo(() => {
     const q = search.trim().toLowerCase()
     return data.filter((row) => {
@@ -210,7 +276,28 @@ export function DataTable<T extends object>({
     setPagination((p) => ({ ...p, pageIndex: 0 }))
   }, [search, filterSelections])
 
-  // Columns (checkbox + user + actions)
+  /* -------------------------------- Grouping -------------------------------- */
+  const [groupId, setGroupId] = React.useState<string>("")
+  const currentGroup = React.useMemo(
+    () => groupBy?.find((g) => g.id === groupId),
+    [groupBy, groupId]
+  )
+
+  const grouped: Record<string, T[]> | null = React.useMemo(() => {
+    if (!currentGroup) return null
+    const map: Record<string, T[]> = {}
+    for (const r of filteredRows) {
+      const key = currentGroup.accessor(r) ?? "—"
+      if (!map[key]) map[key] = []
+      map[key].push(r)
+    }
+    const keys = Object.keys(map)
+    keys.sort(currentGroup.sortGroups ?? ((a, b) => a.localeCompare(b)))
+    // Return in sorted key order
+    return keys.reduce((acc, k) => (acc[k] = map[k], acc), {} as Record<string, T[]>)
+  }, [filteredRows, currentGroup])
+
+  /* ------------------------------ Columns compose ----------------------------- */
   const composedColumns = React.useMemo<ColumnDef<T>[]>(() => {
     const cols: ColumnDef<T>[] = []
 
@@ -275,7 +362,7 @@ export function DataTable<T extends object>({
     return cols
   }, [columns, renderRowActions])
 
-  // Table uses filteredRows directly
+  /* --------------------------------- Table --------------------------------- */
   const table = useReactTable({
     data: filteredRows,
     columns: composedColumns,
@@ -290,29 +377,50 @@ export function DataTable<T extends object>({
     getSortedRowModel: getSortedRowModel(),
   })
 
-  /* ------------------------------ Toolbar ------------------------------ */
-  // Focus-preserving search helpers
-  const searchInputRef = React.useRef<HTMLInputElement | null>(null)
-  const lastTypeTs = React.useRef(0)
-  function restoreFocusIfRecent() {
-    const el = searchInputRef.current
-    if (!el) return
-    if (Date.now() - lastTypeTs.current < 300) {
-      const start = el.selectionStart ?? el.value.length
-      const end = el.selectionEnd ?? el.value.length
-      requestAnimationFrame(() => {
-        el.focus({ preventScroll: true })
-        try { el.setSelectionRange(start, end) } catch (_err) {}
-      })
-    }
+  /* ------------------------------ Toolbar (new) ------------------------------ */
+
+  function ActiveFilterChips() {
+    const entries = Object.entries(filterSelections).filter(([, v]) => v && v !== ALL_TOKEN)
+    if (!entries.length) return null
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        {entries.map(([id, v]) => {
+          const meta = filters?.find(f => f.id === id)
+          const label = meta?.options.find(o => o.value === v)?.label ?? v
+          return (
+            <span
+              key={`${id}:${v}`}
+              className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs"
+            >
+              <span className="font-medium">{meta?.label}:</span> {label}
+              <button
+                className="rounded-full p-1 hover:bg-muted"
+                onClick={() => setFilter(id, "")}
+                aria-label={`Remove ${meta?.label}`}
+              >
+                <IconX className="size-3" />
+              </button>
+            </span>
+          )
+        })}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2"
+          onClick={clearAllFilters}
+        >
+          <IconRefresh className="mr-1 size-4" /> Clear
+        </Button>
+      </div>
+    )
   }
 
   function Toolbar() {
     return (
-      <div className="mb-4">
+      <div className="mb-3">
         <div className="flex flex-wrap items-center gap-2">
-          {/* LEFT: Filters + Search */}
-          <form onSubmit={(e) => e.preventDefault()} className="flex flex-wrap items-center gap-2">
+          {/* LEFT: Filters */}
+          <div className="flex flex-wrap items-center gap-2">
             {filters?.map((f) => {
               const selected = filterSelections[f.id] ?? ""
               const counts = countsByFilter[f.id] ?? {}
@@ -324,19 +432,20 @@ export function DataTable<T extends object>({
                   onValueChange={(v) => setFilter(f.id, v === ALL_TOKEN ? "" : v)}
                 >
                   <SelectTrigger
-                    className="w-[220px]"
+                    className="w-[210px]"
                     size="sm"
                     aria-label={f.label}
                   >
+                    <IconFilter className="mr-1 size-4 text-muted-foreground" />
                     <SelectValue placeholder={f.label} />
                   </SelectTrigger>
                   <SelectContent align="start">
                     <SelectItem value={ALL_TOKEN}>
-                      Tous{typeof total === "number" ? ` (${total})` : ""}
+                      All {typeof total === "number" ? `(${total})` : ""}
                     </SelectItem>
                     {f.options.map((o) => (
                       <SelectItem key={o.value} value={o.value}>
-                        {o.label} {`(${counts[o.value] ?? 0})`}
+                        {o.label} ({counts[o.value] ?? 0})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -344,31 +453,111 @@ export function DataTable<T extends object>({
               )
             })}
 
-            {searchable && (
-              <div className="relative w-[200px] sm:w-[240px] lg:w-[280px]">
-                <IconSearch className="absolute left-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            {/* Group By */}
+            {groupBy?.length ? (
+              <Select
+                value={groupId || "none"}
+                onValueChange={(v) => setGroupId(v === "none" ? "" : v)}
+              >
+                <SelectTrigger size="sm" className="w-[180px]">
+                  <IconChevronDown className="mr-1 size-4 text-muted-foreground" />
+                  <SelectValue placeholder="Group by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No grouping</SelectItem>
+                  {groupBy.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+
+            {/* Active filter chips */}
+            <ActiveFilterChips />
+          </div>
+
+          {/* CENTER (auto): Search Icon → Expanding Input */}
+          {searchable && (
+            <div className="mx-auto flex items-center">
+              <div
+                className={cn(
+                  "flex items-center rounded-md border bg-background transition-all",
+                  searchOpen ? "pr-2" : "border-transparent"
+                )}
+                onMouseDown={(e) => {
+                  // Prevent losing focus when clicking inside wrapper
+                  e.preventDefault()
+                }}
+              >
+                <Button
+                  type="button"
+                  variant={searchOpen ? "secondary" : "ghost"}
+                  size="icon"
+                  className="size-8"
+                  onClick={() => setSearchOpen((v) => !v)}
+                >
+                  <IconSearch className="size-4" />
+                </Button>
                 <Input
                   ref={searchInputRef}
-                  className="pl-8"
+                  className={cn(
+                    "border-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-all",
+                    "placeholder:text-sm",
+                    searchOpen ? "w-40 sm:w-64 lg:w-80 opacity-100" : "w-0 p-0 opacity-0"
+                  )}
                   placeholder={searchable.placeholder ?? "Search..."}
                   value={searchInput}
                   onChange={(e) => {
                     lastTypeTs.current = Date.now()
                     setSearchInput(e.target.value)
-                    // if something steals focus within this frame, put it back
-                    requestAnimationFrame(() => {
-                      searchInputRef.current?.focus({ preventScroll: true })
-                    })
                   }}
-                  onBlur={restoreFocusIfRecent}
+                  onFocus={() => setSearchOpen(true)}
                 />
+                {searchOpen && searchInput && (
+                  <button
+                    className="rounded p-1 hover:bg-muted"
+                    onClick={() => {
+                      setSearchInput("")
+                      setSearch("")
+                      focusSearchSafely()
+                    }}
+                    aria-label="Clear search"
+                  >
+                    <IconX className="size-4" />
+                  </button>
+                )}
               </div>
-            )}
-          </form>
+            </div>
+          )}
 
-          {/* RIGHT: Import + Delete + Add */}
+          {/* RIGHT: View switch + Import + Delete + Add */}
           <div className="ml-auto flex items-center gap-2">
-            
+            {/* View */}
+            <div className="hidden sm:flex rounded-md border">
+              <Button
+                type="button"
+                variant={view === "list" ? "default" : "ghost"}
+                size="sm"
+                className="gap-1 rounded-r-none"
+                onClick={() => setView("list")}
+              >
+                <IconTable className="size-4" />
+                <span className="hidden md:inline">List</span>
+              </Button>
+              <Button
+                type="button"
+                variant={view === "grid" ? "default" : "ghost"}
+                size="sm"
+                className="gap-1 rounded-l-none"
+                onClick={() => setView("grid")}
+              >
+                <IconGridDots className="size-4" />
+                <span className="hidden md:inline">Grid</span>
+              </Button>
+            </div>
+
             {/* Delete selected */}
             {onDeleteSelected && table.getFilteredSelectedRowModel().rows.length > 0 && (
               <Button
@@ -400,39 +589,105 @@ export function DataTable<T extends object>({
     )
   }
 
-  // Optional Drawer helper (kept, unchanged)
-  // function DrawerCell({ row }: { row: T }) {
-  //   if (!drawer) return null
-  //   const trigger =
-  //     drawer.renderTrigger ??
-  //     ((r: T) => <span className="text-foreground">{String(r[String(drawer.triggerField!)] ?? "")}</span>)
-  //   return (
-  //     <Drawer>
-  //       <DrawerTrigger asChild>
-  //         <Button variant="link" className="text-foreground w-fit px-0 text-left">
-  //           {trigger(row)}
-  //         </Button>
-  //       </DrawerTrigger>
-  //       <DrawerContent>
-  //         <DrawerHeader className="gap-1">
-  //           <DrawerTitle>
-  //             {drawer.renderTitle ? drawer.renderTitle(row) : String(row[String(drawer.triggerField!)] ?? "")}
-  //           </DrawerTitle>
-  //         </DrawerHeader>
-  //         {drawer.renderBody && <div className="px-4 py-2">{drawer.renderBody(row)}</div>}
-  //         <DrawerFooter>
-  //           {drawer.renderFooter ? (
-  //             drawer.renderFooter(row)
-  //           ) : (
-  //             <DrawerClose asChild>
-  //               <Button variant="outline">Close</Button>
-  //             </DrawerClose>
-  //           )}
-  //         </DrawerFooter>
-  //       </DrawerContent>
-  //     </Drawer>
-  //   )
-  // }
+  /* ------------------------------ List rendering ----------------------------- */
+
+  function ListViewRows({ rows }: { rows: T[] }) {
+    // Render as your existing table body
+    return (
+      <>
+        {rows.length ? (
+          rows.map((row) => (
+            <TableRow
+              key={(row as any).id ?? JSON.stringify(row)}
+              data-state={
+                // Best-effort sync selection by rowId used by table
+                // We can't cheaply map T->Row here, table row model is elsewhere.
+                undefined
+              }
+            >
+              {/* We render via table row model below to keep sorting/paging intact */}
+            </TableRow>
+          ))
+        ) : (
+          <TableRow>
+            <TableCell colSpan={composedColumns.length} className="h-24 text-center">
+              No results.
+            </TableCell>
+          </TableRow>
+        )}
+      </>
+    )
+  }
+
+  /* ------------------------------ Grid rendering ----------------------------- */
+
+  function AutoCard({ row }: { row: any }) {
+    // Build from visible columns (skip _select/_actions)
+    const visibleCols = table
+      .getAllColumns()
+      .filter((c) => c.getIsVisible() && !["_select", "_actions"].includes(c.id))
+
+    return (
+      <div className="rounded-lg border p-3 hover:shadow-sm transition-shadow">
+        <div className="space-y-1">
+          {visibleCols.map((col) => {
+            const ctx = {
+              table,
+              row: { original: row } as any,
+              getValue: () => (row as any)[String(col.id)] ?? "",
+              column: col,
+              cell: null as any,
+            }
+            return (
+              <div key={col.id} className="grid grid-cols-3 gap-2 text-sm">
+                <div className="col-span-1 text-muted-foreground">
+                  {typeof col.columnDef.header === "string"
+                    ? col.columnDef.header
+                    : (col.columnDef.header as any)({ column: col })}
+                </div>
+                <div className="col-span-2 font-medium truncate">
+                  {flexRender(col.columnDef.cell ?? col.columnDef.header, ctx)}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        {renderRowActions && (
+          <div className="mt-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1">
+                  <IconDotsVertical className="size-4" /> Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                {renderRowActions(row)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function GridSection({ title, rows }: { title?: string; rows: T[] }) {
+    return (
+      <section className="w-full">
+        {title ? (
+          <div className="sticky top-[52px] z-10 -mx-1 mb-2 bg-background/60 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/40">
+            <div className="text-sm font-semibold">{title}</div>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {rows.map((r, i) => (
+            <div key={(r as any).id ?? i}>
+              {renderCard ? renderCard(r) : <AutoCard row={r} />}
+            </div>
+          ))}
+        </div>
+      </section>
+    )
+  }
 
   /* ---------------------------------- Render ---------------------------------- */
   return (
@@ -441,121 +696,172 @@ export function DataTable<T extends object>({
         <Toolbar />
       </div>
 
-      <div className="relative flex flex-col gap-4 overflow-auto">
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
-            <TableHeader className="bg-muted sticky top-0 z-10">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id} colSpan={header.colSpan}>
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody className="**:data-[slot=table-cell]:first:w-8">
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
+      {/* LIST VIEW */}
+      {view === "list" ? (
+        <div className="relative flex flex-col gap-4 overflow-auto">
+          <div className="overflow-x-auto rounded-lg border">
+            <Table className="min-w-full">
+              <TableHeader className="bg-muted sticky top-0 z-10">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id} colSpan={header.colSpan} className="whitespace-nowrap">
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
                     ))}
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={composedColumns.length} className="h-24 text-center">
-                    No results.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                ))}
+              </TableHeader>
+              <TableBody className="**:data-[slot=table-cell]:first:w-8">
+                {(() => {
+                  const rows = table.getRowModel().rows
+                  if (!rows?.length) {
+                    return (
+                      <TableRow>
+                        <TableCell colSpan={composedColumns.length} className="h-24 text-center">
+                          No results.
+                        </TableCell>
+                      </TableRow>
+                    )
+                  }
 
-        {/* Pagination */}
-        <div className="flex items-center justify-between px-4">
-          <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">
-            {table.getFilteredSelectedRowModel().rows.length} of{" "}
-            {table.getFilteredRowModel().rows.length} row(s) selected.
+                  // If grouped, render group headers + rows from the table row model order
+                  if (currentGroup && grouped) {
+                    return Object.entries(grouped).map(([label, groupRows]) => (
+                      <React.Fragment key={label}>
+                        <TableRow className="bg-muted/40 hover:bg-muted/40">
+                          <TableCell colSpan={composedColumns.length} className="text-sm font-semibold">
+                            {label} <span className="text-muted-foreground">({groupRows.length})</span>
+                          </TableCell>
+                        </TableRow>
+                        {groupRows.map((gr, idx) => {
+                          // Find matching row in table model by rowId
+                          const id = getRowId?.(gr, idx) ?? String(filteredRows.indexOf(gr))
+                          const tableRow = rows.find((r) => r.id === id) ?? rows.find((r) => r.original === gr)
+                          if (!tableRow) return null
+                          return (
+                            <TableRow
+                              key={tableRow.id}
+                              data-state={tableRow.getIsSelected() && "selected"}
+                            >
+                              {tableRow.getVisibleCells().map((cell) => (
+                                <TableCell key={cell.id} className="whitespace-nowrap">
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          )
+                        })}
+                      </React.Fragment>
+                    ))
+                  }
+
+                  // Ungrouped: render table rows normally
+                  return rows.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      data-state={row.getIsSelected() && "selected"}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id} className="whitespace-nowrap">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                })()}
+              </TableBody>
+            </Table>
           </div>
-          <div className="flex w-full items-center gap-8 lg:w-fit">
-            <div className="hidden items-center gap-2 lg:flex">
-              <Label htmlFor="rows-per-page" className="text-sm font-medium">
-                Résultat par page:
-              </Label>
-              <Select
-                value={`${table.getState().pagination.pageSize}`}
-                onValueChange={(v) => table.setPageSize(Number(v))}
-              >
-                <SelectTrigger size="sm" className="w-20" id="rows-per-page">
-                  <SelectValue placeholder={table.getState().pagination.pageSize} />
-                </SelectTrigger>
-                <SelectContent side="top">
-                  {pageSizeOptions.map((ps) => (
-                    <SelectItem key={ps} value={`${ps}`}>
-                      {ps}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between px-4">
+            <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">
+              {table.getFilteredSelectedRowModel().rows.length} of{" "}
+              {table.getFilteredRowModel().rows.length} row(s) selected.
             </div>
-            <div className="flex w-fit items-center justify-center text-sm font-medium">
-              Page {table.getState().pagination.pageIndex + 1} sur {table.getPageCount()}
-            </div>
-            <div className="ml-auto flex items-center gap-2 lg:ml-0">
-              <Button
-                variant="outline"
-                className="hidden h-8 w-8 p-0 lg:flex"
-                onClick={() => table.setPageIndex(0)}
-                disabled={!table.getCanPreviousPage()}
-              >
-                <span className="sr-only">Go to first page</span>
-                <IconChevronsLeft />
-              </Button>
-              <Button
-                variant="outline"
-                className="size-8"
-                size="icon"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                <span className="sr-only">Go to previous page</span>
-                <IconChevronLeft />
-              </Button>
-              <Button
-                variant="outline"
-                className="size-8"
-                size="icon"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                <span className="sr-only">Go to next page</span>
-                <IconChevronRight />
-              </Button>
-              <Button
-                variant="outline"
-                className="hidden size-8 lg:flex"
-                size="icon"
-                onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-                disabled={!table.getCanNextPage()}
-              >
-                <span className="sr-only">Go to last page</span>
-                <IconChevronsRight />
-              </Button>
+            <div className="flex w-full items-center gap-8 lg:w-fit">
+              <div className="hidden items-center gap-2 lg:flex">
+                <Label htmlFor="rows-per-page" className="text-sm font-medium">
+                  Résultat par page:
+                </Label>
+                <Select
+                  value={`${table.getState().pagination.pageSize}`}
+                  onValueChange={(v) => table.setPageSize(Number(v))}
+                >
+                  <SelectTrigger size="sm" className="w-20" id="rows-per-page">
+                    <SelectValue placeholder={table.getState().pagination.pageSize} />
+                  </SelectTrigger>
+                  <SelectContent side="top">
+                    {pageSizeOptions.map((ps) => (
+                      <SelectItem key={ps} value={`${ps}`}>
+                        {ps}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex w-fit items-center justify-center text-sm font-medium">
+                Page {table.getState().pagination.pageIndex + 1} sur {table.getPageCount()}
+              </div>
+              <div className="ml-auto flex items-center gap-2 lg:ml-0">
+                <Button
+                  variant="outline"
+                  className="hidden h-8 w-8 p-0 lg:flex"
+                  onClick={() => table.setPageIndex(0)}
+                  disabled={!table.getCanPreviousPage()}
+                >
+                  <span className="sr-only">Go to first page</span>
+                  <IconChevronsLeft />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="size-8"
+                  size="icon"
+                  onClick={() => table.previousPage()}
+                  disabled={!table.getCanPreviousPage()}
+                >
+                  <span className="sr-only">Go to previous page</span>
+                  <IconChevronLeft />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="size-8"
+                  size="icon"
+                  onClick={() => table.nextPage()}
+                  disabled={!table.getCanNextPage()}
+                >
+                  <span className="sr-only">Go to next page</span>
+                  <IconChevronRight />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="hidden size-8 lg:flex"
+                  size="icon"
+                  onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+                  disabled={!table.getCanNextPage()}
+                >
+                  <span className="sr-only">Go to last page</span>
+                  <IconChevronsRight />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        /* GRID VIEW */
+        <div className="flex flex-col gap-3">
+          {currentGroup && grouped
+            ? Object.entries(grouped).map(([label, rows]) => (
+                <GridSection key={label} title={label} rows={rows} />
+              ))
+            : <GridSection rows={filteredRows} />
+          }
+        </div>
+      )}
+
       {/* Delete confirmation dialog */}
       <AlertDialog open={openDelete} onOpenChange={setOpenDelete}>
         <AlertDialogContent>
@@ -572,7 +878,6 @@ export function DataTable<T extends object>({
                 const selectedRows = table.getFilteredSelectedRowModel().rows.map(r => r.original as T)
                 setOpenDelete(false)
                 onDeleteSelected?.(selectedRows)
-                // Optionally clear selection after callback:
                 table.resetRowSelection()
               }}
             >
@@ -581,7 +886,6 @@ export function DataTable<T extends object>({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </div>
   )
 }
