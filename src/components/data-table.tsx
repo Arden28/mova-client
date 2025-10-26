@@ -663,7 +663,7 @@ export function DataTable<T extends object>({
       {/* LIST VIEW */}
       {view === "list" ? (
         <div className="relative flex flex-col gap-4 overflow-auto">
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="overflow-x-auto border">
             <Table className="min-w-full">
               <TableHeader className="bg-muted sticky top-0 z-10">
                 {table.getHeaderGroups().map((headerGroup) => (
