@@ -503,6 +503,10 @@ export default function AddEditReservationDialog({
     if (edWp?.length) setWaypoints(edWp)
     else setWaypoints([])
     setRouteKm((editing as any)?.distanceKm ?? null)
+
+    // hydrate event selector from existing row (fallback to "none")
+    setEventType(((editing as any)?.event as EventType) ?? "none")
+
   }, [editing, open])
 
   function setField<K extends keyof Reservation>(key: K, val: Reservation[K]) {
@@ -600,6 +604,7 @@ export default function AddEditReservationDialog({
       },
       seats: isNaN(seats) ? 1 : seats,
       busIds,
+      event: eventType, // <-- ensure UI object carries event
       priceTotal: isNaN(priceTotal) ? 0 : priceTotal,
       status: (form.status as Reservation["status"]) ?? "pending",
       createdAt: editing?.createdAt ?? new Date().toISOString(),
