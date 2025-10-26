@@ -384,6 +384,11 @@ export default function PeoplePage() {
     
   const groupBy: GroupByConfig<Person>[] = [
     {
+      id: "role",
+      label: "Rôle",
+      accessor: (r: Person) => r.role ?? "—",
+    },
+    {
       id: "status",
       label: "Bus affecté",
       accessor: (r: Person) => r.status ?? "—",
