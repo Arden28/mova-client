@@ -450,7 +450,7 @@ type Props = {
 }
 
 type VehicleType = "hiace" | "coaster"
-type EventType = "none" | "marriage" | "funeral" | "church"
+type EventType = "none" | "wedding" | "funeral" | "church"
 
 type QuoteResponse = {
   currency: string
@@ -547,7 +547,7 @@ export default function AddEditReservationDialog({
         const payload = {
           vehicle_type: vehicleType,
           distance_km: Number(distanceKmDisplay ?? 0),
-          event_type: eventType,
+          event: eventType,
           buses: busCount,
         }
         const res = await api.post<QuoteResponse, typeof payload>("/quote", payload)
@@ -567,12 +567,7 @@ export default function AddEditReservationDialog({
   }, [vehicleType, eventType, distanceKmDisplay, busCount]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSubmit() {
-    const id = editing?.id ?? (crypto.randomUUID() as Reservation["id"])
-    const code = editing?.code ?? `BZV-${String(Math.floor(Math.random() * 1000000)).padStart(6, "0")}`
-
-    const seats = Number(form.seats ?? 1)
-    const priceTotal = Number(form.priceTotal ?? 0)
-
+    
     if (!form.passenger?.name || !form.passenger?.phone) {
       toast.error("Nom et téléphone du passager sont obligatoires.")
       return
@@ -582,10 +577,18 @@ export default function AddEditReservationDialog({
       return
     }
 
-    const fromLabel = waypoints[0]?.label || "Départ"
-    const toLabel = waypoints[waypoints.length - 1]?.label || "Arrivée"
 
-    const payload: UIReservation = {
+    const id = editing?.id ?? (crypto.randomUUID() as Reservation["id"])
+    const code = editing?.code ?? `BZV-${String(Math.floor(Math.random() * 1000000)).padStart(6, "0")}`
+
+    const seats = Number(form.seats ?? 1)
+    const priceTotal = Number(form.priceTotal ?? 0)
+
+    const fromLabel = waypoints[0]?.label || "Départ"
+    const toLabel   = waypoints[waypoints.length - 1]?.label || "Arrivée"
+
+    // Build the UI object you already use (if needed elsewhere)
+    const uiPayload: UIReservation = {
       id,
       code,
       tripDate: String(form.tripDate ?? ""),
@@ -596,15 +599,53 @@ export default function AddEditReservationDialog({
         email: form.passenger?.email ? String(form.passenger.email) : undefined,
       },
       seats: isNaN(seats) ? 1 : seats,
-      busIds: busIds,
+      busIds,
       priceTotal: isNaN(priceTotal) ? 0 : priceTotal,
       status: (form.status as Reservation["status"]) ?? "pending",
       createdAt: editing?.createdAt ?? new Date().toISOString(),
-      ...( { distanceKm: distanceKmDisplay } as any ),
+      ...( { distanceKm: routeKm ?? havKm } as any ),
       ...( { waypoints } as any ),
     }
 
-    onSubmit(payload)
+    // Map to API shape (snake_case) for Laravel
+    const apiPayload: any = {
+      // only send code if you want to set/update it
+      code: code || undefined,
+
+      trip_date: uiPayload.tripDate || undefined,
+      from_location: fromLabel || undefined,
+      to_location: toLabel || undefined,
+
+      passenger_name: uiPayload.passenger?.name || undefined,
+      passenger_phone: uiPayload.passenger?.phone || undefined,
+      passenger_email: uiPayload.passenger?.email ?? undefined, // send undefined to omit, or null to clear
+
+      seats: uiPayload.seats,
+      price_total: uiPayload.priceTotal ?? null, // nullable numeric
+
+      status: uiPayload.status, // 'pending' | 'confirmed' | 'cancelled'
+
+      waypoints: waypoints?.length ? waypoints.map(w => ({
+        lat: w.lat,
+        lng: w.lng,
+        label: w.label || null,
+      })) : undefined, // omit if not provided (you already guard for >=2)
+
+      distance_km: (routeKm ?? havKm) ?? null,
+
+      bus_ids: busIds?.length ? busIds : null, // nullable array
+
+      event: eventType, // correct spelling
+    }
+
+    // Remove undefined keys (keep nulls, validator uses nullable)
+    Object.keys(apiPayload).forEach(k => apiPayload[k] === undefined && delete apiPayload[k])
+
+    // Now call your API here (create/update). Example:
+    // if (editing) await api.patch(`/reservations/${id}`, apiPayload)
+    // else await api.post(`/reservations`, apiPayload)
+
+    onSubmit(uiPayload) // if your parent expects the UI object
     onOpenChange(false)
     toast(editing ? "Réservation mise à jour." : "Réservation ajoutée.")
   }
@@ -793,7 +834,7 @@ export default function AddEditReservationDialog({
                   onChange={(e) => setEventType(e.target.value as EventType)}
                 >
                   <option value="none">Aucun</option>
-                  <option value="marriage">Mariage</option>
+                  <option value="wedding">Mariage</option>
                   <option value="funeral">Funérailles</option>
                   <option value="church">Église</option>
                 </select>

@@ -118,7 +118,7 @@ type Props = {
 }
 
 type VehicleType = "hiace" | "coaster"
-type EventType = "none" | "marriage" | "funeral" | "church"
+type EventType = "none" | "wedding" | "funeral" | "church"
 type QuoteResponse = { currency: string; client_payable: number; bus_payable: number }
 
 export default function AddEditReservationSheet({
@@ -220,7 +220,7 @@ export default function AddEditReservationSheet({
         const payload = {
           vehicle_type: vehicleType,
           distance_km: Number(distanceKm ?? 0),
-          event_type: eventType,
+          event: eventType,
           buses: busesCount,
         }
         const res = await api.post<QuoteResponse, typeof payload>("/quote", payload)
@@ -356,7 +356,7 @@ export default function AddEditReservationSheet({
                     onChange={(e) => setEventType(e.target.value as EventType)}
                   >
                     <option value="none">Aucun</option>
-                    <option value="marriage">Mariage</option>
+                    <option value="wedding">Mariage</option>
                     <option value="funeral">Funérailles</option>
                     <option value="church">Église</option>
                   </select>

@@ -610,7 +610,7 @@ export function DataTable<T extends object>({
                 onClick={() => setView("list")}
               >
                 <IconTable className="size-4" />
-                <span className="hidden md:inline">List</span>
+                <span className="hidden md:inline">Liste</span>
               </Button>
               <Button
                 type="button"
