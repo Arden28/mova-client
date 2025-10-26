@@ -31,6 +31,7 @@ import type { UIBus } from "@/api/bus"
 import type { Person } from "@/api/people"
 import type { BusStatus, BusType } from "@/api/bus"
 import { cn } from "@/lib/utils"
+import useAuth from "@/hooks/useAuth"
 
 /** Options prédéfinies */
 const MODEL_OPTIONS = [
@@ -62,6 +63,12 @@ export default function AddEditBusDialog({
   editing,
   people = [],
 }: AddEditBusDialogProps) {
+  const { user } = useAuth()
+  const isAdmin = React.useMemo(() => {
+    const role = (user?.role ?? "").toString().toLowerCase()
+    return role === "admin" || role === "superadmin"
+  }, [user?.role])
+
   // ------- État (Bus) -------
   const [plate, setPlate] = React.useState("")
   const [capacity, setCapacity] = React.useState<number>(49)
@@ -96,7 +103,6 @@ export default function AddEditBusDialog({
     return map
   }, [editing?.operatorId, editing?.operatorName, editing?.assignedDriverId, editing?.driverName])
 
-  // Label resolver: prefer people[], then fallbacks; if nothing, return undefined (so we don't show an opaque id)
   const getPersonLabel = React.useCallback(
     (id: Id | ""): string | undefined => {
       if (!id) return undefined
@@ -150,12 +156,6 @@ export default function AddEditBusDialog({
   function isIsoDate(v: string) {
     return /^\d{4}-\d{2}-\d{2}$/.test(v)
   }
-  function asNumberOrUndefined(v: unknown) {
-    if (v === "" || v === undefined || v === null) return undefined
-    const n = Number(v)
-    return Number.isFinite(n) ? n : undefined
-  }
-
   function asStringOrUndefined(v: unknown) {
     if (v === "" || v === undefined || v === null) return undefined
     return String(v)
@@ -164,7 +164,6 @@ export default function AddEditBusDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
 
-    // Client-side guard: insurance_valid_until >= last_service_date (if both present)
     if (insValidUntil && lastServiceDate) {
       const a = new Date(insValidUntil)
       const b = new Date(lastServiceDate)
@@ -173,6 +172,10 @@ export default function AddEditBusDialog({
         return
       }
     }
+
+    // Lock owner/driver values for non-admins:
+    const lockedOperatorId = !isAdmin ? editing?.operatorId : operatorId
+    const lockedDriverId = !isAdmin ? editing?.assignedDriverId : assignedDriverId
 
     const payload: Partial<UIBus> & { id?: string } = {
       ...(editing?.id ? { id: editing.id } : {}),
@@ -183,8 +186,8 @@ export default function AddEditBusDialog({
       model: model.trim() || undefined,
       year: year === "" ? undefined : Number(year),
       mileageKm: mileageKm === "" ? undefined : Number(mileageKm),
-      operatorId: asStringOrUndefined(operatorId),
-      assignedDriverId: asStringOrUndefined(assignedDriverId),
+      operatorId: asStringOrUndefined(lockedOperatorId),
+      assignedDriverId: asStringOrUndefined(lockedDriverId),
       lastServiceDate: lastServiceDate && isIsoDate(lastServiceDate) ? lastServiceDate : undefined,
       ...(hasInsurance &&
       (insProvider.trim() || insPolicy.trim() || insValidUntil.trim())
@@ -218,7 +221,7 @@ export default function AddEditBusDialog({
     return <h3 className="text-sm font-semibold text-foreground">{children}</h3>
   }
 
-  // Combobox générique (select + recherche)
+  // Combobox générique (select + recherche) — now supports `disabled`
   function ComboBox<T extends string | number>({
     value,
     onChange,
@@ -227,7 +230,8 @@ export default function AddEditBusDialog({
     emptyText = "Aucun résultat",
     getLabel,
     className,
-    includeCurrentValue, // if true, inject current value into the list (with label resolver) when not present
+    includeCurrentValue,
+    disabled,
   }: {
     value: T | ""
     onChange: (v: T | "") => void
@@ -237,15 +241,13 @@ export default function AddEditBusDialog({
     getLabel?: (v: T) => string | undefined
     className?: string
     includeCurrentValue?: boolean
+    disabled?: boolean
   }) {
     const [open, setOpen] = React.useState(false)
 
-    // Important: DO NOT show opaque IDs in the trigger.
-    // If we can't resolve a label, show placeholder instead of String(value).
     const selectedLabel =
       value !== "" ? (getLabel ? getLabel(value as T) : String(value)) : ""
 
-    // Prepare list options; optionally inject the current value at top if missing
     const preparedOptions = React.useMemo(() => {
       const set = new Set(options.map((o) => String(o)))
       const arr: T[] = [...options] as T[]
@@ -256,14 +258,15 @@ export default function AddEditBusDialog({
     }, [options, value, includeCurrentValue])
 
     return (
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={!disabled && open} onOpenChange={(o) => !disabled && setOpen(o)}>
         <PopoverTrigger asChild>
           <Button
             type="button"
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className={cn("justify-between w-full", className)}
+            disabled={disabled}
+            className={cn("justify-between w-full", disabled && "opacity-70 cursor-not-allowed", className)}
           >
             {selectedLabel
               ? selectedLabel
@@ -320,11 +323,13 @@ export default function AddEditBusDialog({
     onChange,
     people,
     placeholder,
+    disabled,
   }: {
     value: Id | ""
     onChange: (v: Id | "") => void
     people: Person[]
     placeholder: string
+    disabled?: boolean
   }) {
     const ids = React.useMemo(() => people.map((p) => p.id), [people])
     return (
@@ -334,6 +339,7 @@ export default function AddEditBusDialog({
         options={ids}
         includeCurrentValue
         placeholder={placeholder}
+        disabled={disabled}
         getLabel={(id) => getPersonLabel(id)}
       />
     )
@@ -526,7 +532,13 @@ export default function AddEditBusDialog({
                     onChange={setOperatorId}
                     people={owners}
                     placeholder="Choisir le propriétaire"
+                    disabled={!isAdmin}
                   />
+                  {!isAdmin && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Réservé aux administrateurs
+                    </p>
+                  )}
                 </div>
                 <div className="grid gap-2">
                   <Label>Chauffeur</Label>
@@ -535,7 +547,13 @@ export default function AddEditBusDialog({
                     onChange={setAssignedDriverId}
                     people={drivers}
                     placeholder="Choisir le chauffeur"
+                    disabled={!isAdmin}
                   />
+                  {!isAdmin && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Réservé aux administrateurs
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
