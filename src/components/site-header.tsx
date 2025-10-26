@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { NavLink } from "react-router-dom"
+import { NavLink, useLocation } from "react-router-dom"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,23 +50,30 @@ export function SiteHeader() {
   const unreadCount = notifications.filter((n) => n.unread).length
   const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))
 
+  // --- Center nav logic: underline active; Données active by default ---
+  const location = useLocation()
+  const isLocations = location.pathname.startsWith("/locations")
+  const isDataActive = !isLocations // Données is active unless on /locations
+
   return (
     <>
       {/* Top header */}
       <header className="relative z-40 flex h-[56px] items-center border-b bg-background/80 backdrop-blur-md px-4 lg:px-6">
         <SidebarTrigger className="-ml-1" />
 
-        {/* Center nav */}
+        {/* Center nav (Données / Locations) */}
         <nav className="pointer-events-auto absolute left-1/2 -translate-x-1/2">
           <ul className="flex items-center gap-6">
             <li>
+              {/* Données is visually active by default (unless on /locations) */}
               <NavLink
                 to="/data"
-                className={({ isActive }) =>
+                className={() =>
                   cn(
-                    "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 border-transparent transition-colors",
-                    "text-muted-foreground hover:text-foreground",
-                    isActive && "text-primary border-primary"
+                    "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 transition-colors",
+                    isDataActive
+                      ? "text-foreground border-primary"
+                      : "text-muted-foreground border-transparent hover:text-foreground"
                   )
                 }
               >
@@ -78,9 +85,10 @@ export function SiteHeader() {
                 to="/locations"
                 className={({ isActive }) =>
                   cn(
-                    "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 border-transparent transition-colors",
-                    "text-muted-foreground hover:text-foreground",
-                    isActive && "text-primary border-primary"
+                    "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 transition-colors",
+                    (isActive || isLocations)
+                      ? "text-foreground border-primary"
+                      : "text-muted-foreground border-transparent hover:text-foreground"
                   )
                 }
               >
@@ -184,22 +192,20 @@ export function SiteHeader() {
       {/* Secondary headbar */}
       <div className="z-30 w-full border-b bg-primary/5">
         <ScrollArea className="w-full">
-          <div className="flex h-10 items-center gap-2 px-4 text-sm">
-            <NavItem to="/bus" label="Bus" />
-            <Separator orientation="vertical" className="h-5" />
-            <NavItem to="/chauffeurs" label="Chauffeurs" />
-            <Separator orientation="vertical" className="h-5" />
-            <NavItem to="/controleurs" label="Contrôleurs" />
-            <Separator orientation="vertical" className="h-5" />
-            <NavItem to="/proprietaires" label="Propriétaires de bus" />
-            <Separator orientation="vertical" className="h-5" />
-            <NavItem to="/clients" label="Clients" />
-            <Separator orientation="vertical" className="h-5" />
-            <NavItem to="/activites" label="Activités" />
-            <Separator orientation="vertical" className="h-5" />
-            <NavItem to="/locations" label="Locations" />
-            <Separator orientation="vertical" className="h-5" />
-            <NavItem to="/staff" label="Staff" />
+          <div className="flex h-10 items-stretch gap-2 px-4 text-sm">
+            <TabLink to="/bus" label="Bus" />
+            <Separator orientation="vertical" className="h-6 self-center" />
+            <TabLink to="/chauffeurs" label="Chauffeurs" />
+            <Separator orientation="vertical" className="h-6 self-center" />
+            <TabLink to="/controleurs" label="Contrôleurs" />
+            <Separator orientation="vertical" className="h-6 self-center" />
+            <TabLink to="/proprietaires" label="Propriétaires de bus" />
+            <Separator orientation="vertical" className="h-6 self-center" />
+            <TabLink to="/clients" label="Clients" />
+            <Separator orientation="vertical" className="h-6 self-center" />
+            <TabLink to="/locations" label="Locations" />
+            <Separator orientation="vertical" className="h-6 self-center" />
+            <TabLink to="/staff" label="Staff" />
           </div>
         </ScrollArea>
       </div>
@@ -208,15 +214,19 @@ export function SiteHeader() {
 }
 
 /* --- Helpers --- */
-function NavItem({ to, label }: { to: string; label: string }) {
+function TabLink({ to, label }: { to: string; label: string }) {
+  // Active style: bg-white + border top/left/right, no bottom. Remove bottom seam with -mb-[1px].
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
         cn(
-          "px-3 py-1 transition-colors border-b-2 border-transparent",
-          "text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-none",
-          isActive && "text-primary border-primary bg-muted/50"
+          "px-3 inline-flex items-center",
+          "rounded-none select-none transition-colors",
+          "hover:bg-muted/60 text-muted-foreground",
+          isActive
+            ? "bg-white text-foreground border-x border-t border-border -mb-[1px]"
+            : "border-transparent"
         )
       }
     >
