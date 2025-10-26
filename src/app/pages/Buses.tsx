@@ -12,7 +12,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import { type ColumnDef } from "@tanstack/react-table"
-import { DataTable, makeDrawerTriggerColumn, type FilterConfig } from "@/components/data-table"
+
+import { DataTable } from "@/components/data-table"
+import { makeDrawerTriggerColumn } from "@/components/data-table-helpers"
+import type { FilterConfig, GroupByConfig } from "@/components/data-table"
 
 import AddEditBusDialog from "@/components/bus/AddEditBusDialog"
 import ImportDialog from "@/components/common/ImportDialog"
@@ -197,6 +200,18 @@ export default function BusesPage() {
     ]
   }, [])
 
+
+  const groupBy: GroupByConfig<UIBus>[] = [
+    {
+      id: "type",
+      label: "Type de bus",
+      accessor: (r: UIBus) => r.type ?? "—",
+    },
+  ]
+  
+  // getRowId (typed id param if you use it elsewhere)
+  const getRowId = (r: UIBus) => String(r.id)
+
   const isServerUuid = (id: string) => /^[0-9a-fA-F-]{36}$/.test(id)
 
   return (
@@ -213,7 +228,7 @@ export default function BusesPage() {
       <DataTable<UIBus>
         data={rows}
         columns={columns}
-        getRowId={(r) => r.id}
+        getRowId={getRowId}
         searchable={searchable}
         filters={filters}
         loading={loading}
@@ -281,7 +296,10 @@ export default function BusesPage() {
             </>
           )
         }}
-        drawer={{ triggerField: "plate" }}
+        groupBy={groupBy}
+        initialView="list"
+        pageSizeOptions={[10, 20, 50]}
+        // drawer={{ triggerField: "plate" }}
         onDeleteSelected={async (selected) => {
           if (selected.length === 0) return
           const prev = rows

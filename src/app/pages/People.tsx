@@ -15,7 +15,7 @@ import {
 import type { ColumnDef } from "@tanstack/react-table"
 import { DataTable } from "@/components/data-table"
 import { makeDrawerTriggerColumn } from "@/components/data-table-helpers"
-import type { FilterConfig } from "@/components/data-table"
+import type { FilterConfig, GroupByConfig } from "@/components/data-table"
 
 import ImportDialog from "@/components/common/ImportDialog"
 
@@ -380,6 +380,19 @@ export default function PeoplePage() {
       </>
     )
   }
+  
+    
+  const groupBy: GroupByConfig<Person>[] = [
+    {
+      id: "status",
+      label: "Bus affecté",
+      accessor: (r: Person) => r.status ?? "—",
+    },
+  ]
+
+  
+  // getRowId (typed id param if you use it elsewhere)
+  const getRowId = (r: Person) => String(r.id)
 
   return (
     <div className="space-y-5">
@@ -395,8 +408,8 @@ export default function PeoplePage() {
       <DataTable<Person>
         data={rows}
         columns={columns}
-        getRowId={(r) => r.id}
-        searchable={searchable}
+        getRowId={getRowId}
+        searchable={{ placeholder: "Rechercher nom, téléphone, email…", fields: ["name", "phone", "email", "licenseNo"] }}
         filters={filters}
         loading={loading}
         onAdd={() => { setEditing(null); setOpen(true) }}
@@ -404,6 +417,9 @@ export default function PeoplePage() {
         onImport={() => setOpenImport(true)}
         importLabel="Importer"
         renderRowActions={renderRowActions}
+        groupBy={groupBy}
+        initialView="list"
+        pageSizeOptions={[10, 20, 50]}
         // drawer={{ triggerField: "name" }}
         onDeleteSelected={async (selected) => {
           if (selected.length === 0) return

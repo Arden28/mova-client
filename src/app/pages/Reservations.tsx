@@ -309,7 +309,6 @@ export default function ReservationPage() {
       </>
     )
   }
-
   
   // getRowId (typed id param if you use it elsewhere)
   const getRowId = (r: UIReservation) => String(r.id)
@@ -334,7 +333,7 @@ export default function ReservationPage() {
       <DataTable<UIReservation>
         data={rows}
         columns={columns}
-        getRowId={(r) => r.id}
+        getRowId={getRowId}
         searchable={{ placeholder: "Rechercher code, passager, téléphone, départ, arrivée…", fields: ["code"] }}
         filters={filters}
         loading={loading}
