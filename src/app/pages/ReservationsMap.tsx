@@ -1,15 +1,14 @@
-// src/app/pages/ReservationsMap.tsx
 "use client"
 
 import * as React from "react"
 import mapboxgl from "mapbox-gl"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
+import { motion, AnimatePresence } from "framer-motion"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { motion, AnimatePresence } from "framer-motion"
-
 import {
   Sheet,
   SheetContent,
@@ -30,6 +29,10 @@ import {
   X,
   MapPin,
   Loader2,
+  Plus,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
 } from "lucide-react"
 
 import reservationApi, { type UIReservation } from "@/api/reservation"
@@ -64,62 +67,34 @@ async function getDrivingRoute(pts: Waypoint[], token: string): Promise<Directio
 
 const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")
 
-/* ------------------------------ Geocoding (smart) ---------------------------- */
-// Republic of the Congo bounding box (approx): [minLon, minLat, maxLon, maxLat]
-const CG_BBOX: [number, number, number, number] = [11.0, -5.8, 18.9, 3.9]
+/* ------------------------------ Geocoding (CG) ---------------------------- */
+const CG_BBOX: [number, number, number, number] = [11.1, -5.5, 18.8, 3.8]
 type GeoResult = { label: string; lat: number; lng: number }
 
-type GeoAttempt =
-  | "pays+bbox"
-  | "pays"
-  | "proximité"
+async function geocodeForwardCG(
+  q: string,
+  map: mapboxgl.Map | null,
+  token: string
+): Promise<GeoResult[]> {
+  if (!q || !token) return []
+  const center = map?.getCenter()
+  const prox = center ? `&proximity=${center.lng},${center.lat}` : ""
+  const bbox = `&bbox=${CG_BBOX.join(",")}`
+  const url =
+    `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
+    `?access_token=${token}&limit=8&language=fr&fuzzyMatch=true${prox}${bbox}&country=CG` +
+    `&types=address,street,place,locality,neighborhood,poi`
 
-async function fetchMapbox(url: string): Promise<GeoResult[]> {
   const r = await fetch(url)
   if (!r.ok) return []
   const j: { features?: { place_name?: string; center?: [number, number] }[] } = await r.json()
   return (j.features ?? [])
-    .filter((f) => Array.isArray(f.center))
+    .filter((f) => Array.isArray(f.center) && typeof f.center[0] === "number" && typeof f.center[1] === "number")
     .map((f) => ({
       label: f.place_name || "Lieu",
       lng: f.center![0],
       lat: f.center![1],
     }))
-}
-
-function buildTypesParam() {
-  // include street/address and broader place types
-  return "address,street,place,locality,neighborhood,poi,region,district"
-}
-
-async function geocodeForwardSmart(
-  q: string,
-  map: mapboxgl.Map | null,
-  token: string
-): Promise<{ results: GeoResult[]; attempt: GeoAttempt | null }> {
-  if (!q || !token) return { results: [], attempt: null }
-  const encQ = encodeURIComponent(q)
-  const center = map?.getCenter()
-  const prox = center ? `&proximity=${center.lng},${center.lat}` : ""
-  const base =
-    `https://api.mapbox.com/geocoding/v5/mapbox.places/${encQ}.json` +
-    `?access_token=${token}` +
-    `&limit=10&language=fr&fuzzyMatch=true&autocomplete=true&types=${buildTypesParam()}`
-
-  // 1) Strict: country + bbox
-  const url1 = `${base}&country=CG&bbox=${CG_BBOX.join(",")}${prox}`
-  let results = await fetchMapbox(url1)
-  if (results.length > 0) return { results, attempt: "pays+bbox" }
-
-  // 2) Relax bbox: country only
-  const url2 = `${base}&country=CG${prox}`
-  results = await fetchMapbox(url2)
-  if (results.length > 0) return { results, attempt: "pays" }
-
-  // 3) Last resort: no country, bias with proximity
-  const url3 = `${base}${prox}`
-  results = await fetchMapbox(url3)
-  return { results, attempt: results.length > 0 ? "proximité" : null }
 }
 
 export default function ReservationsMapPage() {
@@ -132,14 +107,17 @@ export default function ReservationsMapPage() {
   // Selection
   const [selected, setSelected] = React.useState<UIReservation | null>(null)
 
-  // Big edit sheet
+  // Big sheet
   const [openEditSheet, setOpenEditSheet] = React.useState(false)
   const [editing, setEditing] = React.useState<UIReservation | null>(null)
 
-  // Route edit mode (live map editing)
+  // Route edit mode
   const [routeEditMode, setRouteEditMode] = React.useState(false)
   const [draftWps, setDraftWps] = React.useState<Waypoint[] | null>(null)
   const [draftDistanceKm, setDraftDistanceKm] = React.useState<number | null>(null)
+
+  // Creation flow flag
+  const [creatingNew, setCreatingNew] = React.useState(false)
 
   // Map refs/state
   const mapRef = React.useRef<mapboxgl.Map | null>(null)
@@ -165,8 +143,10 @@ export default function ReservationsMapPage() {
   const [placeQuery, setPlaceQuery] = React.useState("")
   const [placeResults, setPlaceResults] = React.useState<GeoResult[]>([])
   const [placeLoading, setPlaceLoading] = React.useState(false)
-  const [placeAttempt, setPlaceAttempt] = React.useState<GeoAttempt | null>(null)
   const searchMarkerRef = React.useRef<mapboxgl.Marker | null>(null)
+
+  // Waypoints side panel (for sorting/renaming while editing)
+  const [showWpPanel, setShowWpPanel] = React.useState(false)
 
   React.useEffect(() => {
     let alive = true
@@ -208,7 +188,7 @@ export default function ReservationsMapPage() {
         container: containerRef.current,
         style: "mapbox://styles/mapbox/streets-v12",
         center: [15.2832, -4.2667], // Brazzaville approx
-        zoom: 12,
+        zoom: 12, // closer initial view
         maxZoom: 19,
         accessToken: MAPBOX_TOKEN,
       })
@@ -360,7 +340,7 @@ export default function ReservationsMapPage() {
         markersRef.current.push(mAr)
       }
 
-      // Popup (view mode) omitted here for brevity—unchanged from previous step
+      // Popup (view mode)
       if (!routeEditMode && start) {
         const card = document.createElement("div")
         card.className =
@@ -390,6 +370,7 @@ export default function ReservationsMapPage() {
             </div>
           </div>
         `
+
         const map = mapRef.current!
         const popup = new mapboxgl.Popup({
           closeButton: false,
@@ -409,6 +390,7 @@ export default function ReservationsMapPage() {
           const wps = (selected as any)?.waypoints as Waypoint[] | undefined
           setDraftWps(wps ? JSON.parse(JSON.stringify(wps)) : [])
           setRouteEditMode(true)
+          setShowWpPanel(true)
         })
         card.querySelector<HTMLButtonElement>("#popup-infos")?.addEventListener("click", () => {
           setEditing(selected)
@@ -466,11 +448,11 @@ export default function ReservationsMapPage() {
 
     requestAnimationFrame(() => {
       try {
-        if (safePadding > 0) map.fitBounds(bounds, { padding: safePadding, maxZoom: 14, duration: 600 })
-        else map.easeTo({ center: bounds.getCenter(), zoom: 12, duration: 500 })
+        if (safePadding > 0) map.fitBounds(bounds, { padding: safePadding, maxZoom: 16, duration: 600 })
+        else map.easeTo({ center: bounds.getCenter(), zoom: 13.5, duration: 500 })
       } catch {
         try {
-          map.easeTo({ center: bounds.getCenter(), zoom: 12, duration: 500 })
+          map.easeTo({ center: bounds.getCenter(), zoom: 13.5, duration: 500 })
         } catch {}
       }
     })
@@ -505,7 +487,7 @@ export default function ReservationsMapPage() {
     }
 
     const wps = activeWps
-    if (!selected || !wps || wps.length < 2) {
+    if ((!selected && !creatingNew) || !wps || wps.length < 2) {
       clear()
       return
     }
@@ -529,7 +511,7 @@ export default function ReservationsMapPage() {
     return () => {
       if (routeDebounceRef.current) window.clearTimeout(routeDebounceRef.current)
     }
-  }, [activeWps, selected, mapLoaded, routeEditMode])
+  }, [activeWps, selected, mapLoaded, routeEditMode, creatingNew])
 
   /* ---------------------- Map click handler (edit mode) ---------------------- */
   React.useEffect(() => {
@@ -563,7 +545,7 @@ export default function ReservationsMapPage() {
     }
   }, [routeEditMode])
 
-  // Resize on UI changes (include animated toolbars)
+  // Resize on UI changes
   React.useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -573,7 +555,7 @@ export default function ReservationsMapPage() {
       } catch {}
     }, 260)
     return () => clearTimeout(t)
-  }, [openList, selected, openEditSheet, routeEditMode, toolbarOpen, placeBarOpen])
+  }, [openList, selected, openEditSheet, routeEditMode, toolbarOpen, placeBarOpen, showWpPanel])
 
   /* -------------------------- Helpers -------------------------- */
   const busPlateById = React.useMemo(() => {
@@ -614,11 +596,77 @@ export default function ReservationsMapPage() {
     )
   }
 
+  /* ----------------------- Waypoints side panel (edit) ---------------------- */
+  function updateWpLabel(i: number, v: string) {
+    setDraftWps((prev) => {
+      if (!prev) return prev
+      const next = [...prev]
+      next[i] = { ...next[i], label: v }
+      return next
+    })
+  }
+  function removeWp(i: number) {
+    setDraftWps((prev) => {
+      if (!prev) return prev
+      const next = [...prev]
+      next.splice(i, 1)
+      return next
+    })
+  }
+  function moveWp(i: number, dir: -1 | 1) {
+    setDraftWps((prev) => {
+      if (!prev) return prev
+      const j = i + dir
+      if (j < 0 || j >= prev.length) return prev
+      const next = [...prev]
+      const tmp = next[i]
+      next[i] = next[j]
+      next[j] = tmp
+      return next
+    })
+  }
+
   // Commit/cancel edit helpers
   async function saveDraftRoute() {
+    // Creating new: confirm itinerary -> open sheet prefilled
+    if (creatingNew) {
+      if (!draftWps || draftWps.length < 2) {
+        toast.error("Ajoutez au moins un départ et une arrivée.")
+        return
+      }
+      const id = crypto.randomUUID()
+      const code = `BZV-${String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0")}`
+      const fromLabel = draftWps[0]?.label || "Départ"
+      const toLabel = draftWps[draftWps.length - 1]?.label || "Arrivée"
+
+      const payload: UIReservation = {
+        id,
+        code,
+        tripDate: new Date().toISOString().slice(0, 10),
+        route: { from: fromLabel, to: toLabel },
+        passenger: { name: "", phone: "" },
+        seats: 1,
+        busIds: [],
+        priceTotal: 0,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+        ...(draftDistanceKm != null ? ({ distanceKm: draftDistanceKm } as any) : {}),
+        ...(draftWps ? ({ waypoints: draftWps } as any) : {}),
+      }
+
+      setEditing(payload)
+      setOpenEditSheet(true)
+      setRouteEditMode(false)
+      setCreatingNew(false)
+      setShowWpPanel(false)
+      return
+    }
+
+    // Editing existing
     if (!selected || !draftWps?.length) {
       setRouteEditMode(false)
       setDraftWps(null)
+      setShowWpPanel(false)
       return
     }
     const updated: UIReservation = {
@@ -643,12 +691,15 @@ export default function ReservationsMapPage() {
 
     setRouteEditMode(false)
     setDraftWps(null)
+    setShowWpPanel(false)
   }
 
   function cancelDraftRoute() {
     setRouteEditMode(false)
     setDraftWps(null)
     setDraftDistanceKm(null)
+    setCreatingNew(false)
+    setShowWpPanel(false)
   }
 
   function undoLastPoint() {
@@ -680,48 +731,53 @@ export default function ReservationsMapPage() {
     if (!placeBarOpen) {
       setPlaceResults([])
       setPlaceLoading(false)
-      setPlaceAttempt(null)
       return
     }
     if (!q) {
       setPlaceResults([])
       setPlaceLoading(false)
-      setPlaceAttempt(null)
       return
     }
     const id = window.setTimeout(async () => {
       setPlaceLoading(true)
       try {
-        const { results, attempt } = await geocodeForwardSmart(q, mapRef.current, MAPBOX_TOKEN)
-        setPlaceResults(results)
-        setPlaceAttempt(attempt)
+        const res = await geocodeForwardCG(q, mapRef.current, MAPBOX_TOKEN)
+        setPlaceResults(res)
       } finally {
         setPlaceLoading(false)
       }
-    }, 350)
+    }, 300)
     return () => window.clearTimeout(id)
   }, [placeQuery, placeBarOpen])
 
   function focusResult(r: GeoResult) {
     const map = mapRef.current
     if (!map) return
-    // Remove previous marker
     searchMarkerRef.current?.remove()
-    // Custom white-circle marker
     const el = document.createElement("div")
     el.className = "grid place-items-center rounded-full bg-white ring-1 ring-black/10 shadow size-8"
     const dot = document.createElement("div")
     dot.className = "size-3 rounded-full bg-primary"
     el.appendChild(dot)
-
     const mk = new mapboxgl.Marker({ element: el }).setLngLat([r.lng, r.lat]).addTo(map)
     searchMarkerRef.current = mk
-
     map.easeTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 15), duration: 600 })
   }
 
+  /* -------------------------- Creation FAB handler -------------------------- */
+  function startCreationFlow() {
+    setSelected(null)
+    popupRef.current?.remove()
+    setDraftWps([])
+    setDraftDistanceKm(null)
+    setRouteEditMode(true)
+    setCreatingNew(true)
+    setShowWpPanel(true)
+    toast("Cliquez sur la carte pour ajouter le départ, l’arrivée et les étapes.")
+  }
+
   return (
-    <div className="relative h/full w-full min-h-0">
+    <div className="relative h-full w-full min-h-0">
       {/* Inline error banner */}
       {mapError && (
         <div className="absolute inset-x-0 top-0 z-30 m-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
@@ -755,11 +811,11 @@ export default function ReservationsMapPage() {
                 <div className="grid size-8 place-items-center rounded-full bg-white ring-1 ring-black/10">
                   <MapIcon className="h-4 w-4" />
                 </div>
-                <span className="hidden text-sm font-medium sm:inline">Réservations · Carte</span>
               </div>
 
               <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
 
+              {/* Search in reservations */}
               <div className="relative min-w-0 flex-1">
                 <SearchIcon className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -770,6 +826,7 @@ export default function ReservationsMapPage() {
                 />
               </div>
 
+              {/* List sheet trigger */}
               <Sheet open={openList} onOpenChange={setOpenList}>
                 <SheetTrigger asChild>
                   <Button size="icon" variant="outline" className="shrink-0">
@@ -796,6 +853,7 @@ export default function ReservationsMapPage() {
                 </SheetContent>
               </Sheet>
 
+              {/* Back to list */}
               <Button asChild size="sm" variant="ghost" className="shrink-0">
                 <Link to="/reservations" className="flex items-center gap-2">
                   <ArrowLeft className="h-4 w-4" />
@@ -803,6 +861,7 @@ export default function ReservationsMapPage() {
                 </Link>
               </Button>
 
+              {/* Close toolbar */}
               <Button
                 type="button"
                 size="icon"
@@ -818,7 +877,7 @@ export default function ReservationsMapPage() {
         </AnimatePresence>
       </div>
 
-      {/* SECOND FAB + Animated Place Search (smart, Congo-first) */}
+      {/* SECOND FAB: place search */}
       <div className="absolute left-4 top-20 z-20">
         {!placeBarOpen && (
           <button
@@ -849,7 +908,7 @@ export default function ReservationsMapPage() {
                   <Input
                     value={placeQuery}
                     onChange={(e) => setPlaceQuery(e.target.value)}
-                    placeholder="Chercher un lieu (rue/adresse) — priorité Congo-Brazzaville"
+                    placeholder="Chercher un lieu dans le Congo-Brazzaville (rue, adresse, ville…)"
                     className="w-full pl-8"
                   />
                 </div>
@@ -863,14 +922,12 @@ export default function ReservationsMapPage() {
                     setPlaceBarOpen(false)
                     setPlaceQuery("")
                     setPlaceResults([])
-                    setPlaceAttempt(null)
                   }}
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
 
-              {/* Results */}
               <div className="relative">
                 <div className="absolute left-0 right-0 z-10 mt-2 rounded-md border bg-popover p-1 shadow">
                   {placeLoading && (
@@ -881,7 +938,7 @@ export default function ReservationsMapPage() {
                   )}
                   {!placeLoading && placeQuery && placeResults.length === 0 && (
                     <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                      Aucun résultat — essayez un autre libellé (ex: “Avenue ...”, “Boulevard ...”).
+                      Aucun résultat (essayez un autre libellé).
                     </div>
                   )}
                   {!placeLoading &&
@@ -898,23 +955,26 @@ export default function ReservationsMapPage() {
                     ))}
                 </div>
               </div>
-
-              {/* tiny hint of which strategy matched */}
-              {placeAttempt && (
-                <div className="mt-2 pl-1 text-[11px] leading-4 text-muted-foreground">
-                  Résultats via <span className="font-medium">
-                    {placeAttempt === "pays+bbox" ? "Congo + zone" : placeAttempt === "pays" ? "Congo" : "proximité"}
-                  </span>.
-                </div>
-              )}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Floating Route Editor Toolbar (only when editing) */}
+      {/* THIRD FAB: New reservation (under place search FAB) */}
+      <div className="absolute left-4 top-36 z-20">
+        <button
+          type="button"
+          aria-label="Nouvelle réservation"
+          onClick={startCreationFlow}
+          className="grid size-12 place-items-center rounded-full bg-white shadow-lg ring-1 ring-black/10 transition hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          <Plus className="h-5 w-5 text-foreground" />
+        </button>
+      </div>
+
+      {/* Floating Route Editor Toolbar (editing/creation) */}
       {routeEditMode && (
-        <div className="absolute left-4 top-[168px] z-20 w-[min(640px,calc(100vw-2rem))]">
+        <div className="absolute left-4 top-[168px] z-20 w-[min(680px,calc(100vw-2rem))]">
           <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background/95 p-2 shadow">
             <Badge variant="secondary" className="px-2">
               {draftWps?.length ?? 0} points
@@ -932,6 +992,13 @@ export default function ReservationsMapPage() {
             <Button size="sm" variant="outline" onClick={recenterToDraft}>
               Recentrer
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowWpPanel((v) => !v)}
+            >
+              {showWpPanel ? "Masquer" : "Voir"} les points
+            </Button>
 
             <div className="ml-auto flex gap-2">
               <Button size="sm" variant="outline" onClick={cancelDraftRoute}>
@@ -940,13 +1007,53 @@ export default function ReservationsMapPage() {
               </Button>
               <Button size="sm" onClick={saveDraftRoute}>
                 <Save className="mr-2 h-4 w-4" />
-                Enregistrer l’itinéraire
+                {creatingNew ? "Confirmer l’itinéraire" : "Enregistrer l’itinéraire"}
               </Button>
             </div>
           </div>
           <div className="mt-2 rounded-md border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
             Astuce : cliquez sur la carte pour ajouter un arrêt, faites glisser les marqueurs pour ajuster. Utilisez
-            « Annuler le dernier » pour retirer le dernier point.
+            « Annuler le dernier » pour retirer le dernier point. Ouvrez « Voir les points » pour renommer / réordonner.
+          </div>
+        </div>
+      )}
+
+      {/* Waypoints side panel (rename/sort/delete) */}
+      {routeEditMode && showWpPanel && (
+        <div className="absolute z-20 left-4 top-[260px] w-[min(520px,calc(100vw-2rem))] rounded-lg border bg-background/95 p-3 shadow">
+          <div className="mb-2 text-sm font-medium">Points de l’itinéraire</div>
+          <div className="max-h-[40vh] overflow-y-auto">
+            {(draftWps ?? []).length === 0 && (
+              <div className="text-sm text-muted-foreground">Cliquez sur la carte pour ajouter des points.</div>
+            )}
+            {(draftWps ?? []).map((wp, idx) => (
+              <div key={`${wp.lat}-${wp.lng}-${idx}`} className="mb-2 flex items-center gap-2">
+                <Badge variant="secondary" className="shrink-0">
+                  {alpha[idx] ?? idx + 1}
+                </Badge>
+                <Input
+                  value={wp.label ?? ""}
+                  onChange={(e) => updateWpLabel(idx, e.target.value)}
+                  className="flex-1"
+                />
+                <div className="flex items-center gap-1">
+                  <Button size="icon" variant="ghost" onClick={() => moveWp(idx, -1)} disabled={idx === 0}>
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => moveWp(idx, +1)}
+                    disabled={idx === (draftWps?.length ?? 0) - 1}
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="text-destructive" onClick={() => removeWp(idx)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -954,24 +1061,58 @@ export default function ReservationsMapPage() {
       {/* Map container */}
       <div ref={containerRef} className="absolute inset-0 bg-muted" style={{ minHeight: "100vh" }} />
 
-      {/* Big Add/Edit sheet (opens from popup) */}
+      {/* Big Add/Edit sheet */}
       <AddEditReservationSheet
         open={openEditSheet}
-        onOpenChange={setOpenEditSheet}
-        editing={editing}
-        onSubmit={async (res) => {
-          setRows((xs) => xs.map((x) => (x.id === res.id ? { ...x, ...res } : x)))
-          try {
-            const saved = await reservationApi.update(res.id, res)
-            setRows((xs) => xs.map((x) => (x.id === res.id ? saved.data : x)))
-            toast.success("Réservation mise à jour.")
-            setEditing(null)
-            setSelected((s) => (s && s.id === res.id ? saved.data : s))
-          } catch (e: any) {
-            toast.error(e?.message ?? "Échec de la mise à jour.")
+        onOpenChange={(v) => {
+          setOpenEditSheet(v)
+          // if closing sheet during creation without saving, reset creation flags
+          if (!v && creatingNew) {
+            setCreatingNew(false)
           }
         }}
+        editing={editing}
+        onSubmit={async (res) => {
+          // create or update depending on presence in list
+          const exists = rows.some((r) => r.id === res.id)
+          if (exists) {
+            // optimistic
+            setRows((xs) => xs.map((x) => (x.id === res.id ? { ...x, ...res } : x)))
+            try {
+              const saved = await reservationApi.update(res.id, res)
+              setRows((xs) => xs.map((x) => (x.id === res.id ? saved.data : x)))
+              toast.success("Réservation mise à jour.")
+              setEditing(null)
+              setSelected((s) => (s && s.id === res.id ? saved.data : s))
+            } catch (e: any) {
+              toast.error(e?.message ?? "Échec de la mise à jour.")
+            }
+          } else {
+            try {
+              const created = await reservationApi.create(res)
+              setRows((xs) => [created.data, ...xs])
+              toast.success("Réservation ajoutée.")
+              setEditing(null)
+              setSelected(created.data)
+            } catch (e: any) {
+              toast.error(e?.message ?? "Échec de la création.")
+            }
+          }
+          setCreatingNew(false)
+        }}
         buses={buses as unknown as any[]}
+        onEditItinerary={() => {
+          if (!editing) return
+          // jump back to map editor with current itinerary
+          const wps = (editing as any).waypoints as Waypoint[] | undefined
+          setDraftWps(wps ? JSON.parse(JSON.stringify(wps)) : [])
+          setDraftDistanceKm((editing as any)?.distanceKm ?? null)
+          setRouteEditMode(true)
+          setCreatingNew(false)
+          setShowWpPanel(true)
+          setOpenEditSheet(false)
+          setSelected(editing) // keep context on map (optional)
+        }}
       />
     </div>
   )

@@ -112,7 +112,12 @@ type Props = {
   editing: UIReservation | null
   onSubmit: (r: UIReservation) => void
   buses: Bus[]
+  /** When present, shows a section inside the sheet to jump back to itinerary editing on the map. */
+  onEditItinerary?: () => void
 }
+
+type VehicleType = "hiace" | "coaster"
+type EventType = "none" | "marriage" | "funeral" | "church"
 
 export default function AddEditReservationSheet({
   open,
@@ -120,9 +125,12 @@ export default function AddEditReservationSheet({
   editing,
   onSubmit,
   buses,
+  onEditItinerary,
 }: Props) {
   const [form, setForm] = React.useState<Partial<UIReservation>>({})
   const [busIds, setBusIds] = React.useState<string[]>([])
+  const [vehicleType, setVehicleType] = React.useState<VehicleType>("hiace")
+  const [eventType, setEventType] = React.useState<EventType>("none")
 
   const busOptions = React.useMemo<MultiSelectOption[]>(() => {
     const uniq: Record<string, boolean> = {}
@@ -135,6 +143,11 @@ export default function AddEditReservationSheet({
   React.useEffect(() => {
     setForm(editing ?? {})
     setBusIds((editing?.busIds as string[]) ?? [])
+    // Hydrate vehicle/event if present in editing (optional extensions)
+    const vt = (editing as any)?.vehicleType as VehicleType | undefined
+    if (vt) setVehicleType(vt)
+    const ev = (editing as any)?.eventType as EventType | undefined
+    if (ev) setEventType(ev)
   }, [editing, open])
 
   function setField<K extends keyof UIReservation>(key: K, val: UIReservation[K]) {
@@ -156,29 +169,45 @@ export default function AddEditReservationSheet({
   }
 
   function handleSave() {
-    if (!form) return
-    if (!form.passenger?.name || !form.passenger?.phone) {
-      toast.error("Nom et téléphone du passager sont obligatoires.")
-      return
-    }
-    const payload: UIReservation = {
+    const base: UIReservation = {
       ...(editing as UIReservation),
       ...form,
       busIds,
+      ...(vehicleType ? ({ vehicleType } as any) : {}),
+      ...(eventType ? ({ eventType } as any) : {}),
     }
-    onSubmit(payload)
+
+    // minimal validation
+    if (!base?.passenger?.name || !base?.passenger?.phone) {
+      toast.error("Nom et téléphone du passager sont obligatoires.")
+      return
+    }
+    if (!base?.route?.from || !base?.route?.to || !(base as any)?.waypoints?.length) {
+      toast.error("L’itinéraire n’est pas défini. Cliquez sur « Modifier l’itinéraire » pour le compléter.")
+      return
+    }
+
+    onSubmit(base)
     onOpenChange(false)
   }
+
+  const distanceKm =
+    typeof (editing as any)?.distanceKm === "number"
+      ? (editing as any).distanceKm
+      : typeof form?.distanceKm === "number"
+      ? (form as any).distanceKm
+      : undefined
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
         className="
-          w-[min(100vw,1000px)]
-          sm:w-[720px]
-          md:w-[860px]
-          lg:w-[980px]
+          w-[min(100vw,1200px)]
+          sm:w-[860px]
+          md:w-[1020px]
+          lg:w-[1140px]
+          xl:w-[1200px]
           p-0
           flex flex-col
         "
@@ -186,12 +215,13 @@ export default function AddEditReservationSheet({
         <SheetHeader className="px-6 pt-6">
           <SheetTitle>{editing ? "Modifier la réservation" : "Ajouter une réservation"}</SheetTitle>
           <SheetDescription className="text-sm">
-            Mettez à jour les infos de réservation. Les changements d’itinéraire se font directement sur la carte.
+            Mettez à jour les infos de réservation. Les changements d’itinéraire se font sur la carte (voir la section «
+            Modifier l’itinéraire » ci-dessous).
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 pb-4">
-          {/* Top context */}
+          {/* Context + distance */}
           {editing && (
             <div className="mt-3 grid gap-3 rounded-lg border p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -201,50 +231,36 @@ export default function AddEditReservationSheet({
                 </span>
                 <span className="ml-auto font-medium">{editing.code}</span>
               </div>
-              {Array.isArray((editing as any).waypoints) && (editing as any).waypoints.length > 1 && (
-                <div className="text-xs text-muted-foreground">
-                  {((editing as any).waypoints as any[]).length} points • distance estimée{" "}
-                  {typeof (editing as any).distanceKm === "number"
-                    ? `${(editing as any).distanceKm.toLocaleString("fr-FR")} km`
-                    : "—"}
-                </div>
-              )}
+              <div className="text-xs text-muted-foreground">
+                {(editing as any)?.waypoints?.length ?? 0} points • distance estimée{" "}
+                {typeof distanceKm === "number" ? `${distanceKm.toLocaleString("fr-FR")} km` : "—"}
+              </div>
             </div>
           )}
 
-          <div className="grid gap-6 sm:grid-cols-2 mt-6">
-            {/* Passenger */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium text-muted-foreground">Passager</h3>
-              <div className="grid gap-2">
-                <div className="grid gap-1.5">
-                  <Label>Nom</Label>
-                  <Input
-                    value={form.passenger?.name ?? ""}
-                    onChange={(e) => setNested("passenger.name", e.target.value)}
-                    placeholder="Nom et prénom"
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>Téléphone</Label>
-                  <Input
-                    value={form.passenger?.phone ?? ""}
-                    onChange={(e) => setNested("passenger.phone", e.target.value)}
-                    placeholder="+242 …"
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>Email (optionnel)</Label>
-                  <Input
-                    value={form.passenger?.email ?? ""}
-                    onChange={(e) => setNested("passenger.email", e.target.value)}
-                    placeholder="email@exemple.com"
-                  />
+          {/* Edit itinerary section */}
+          {onEditItinerary && (
+            <>
+              <div className="mt-4 rounded-md border bg-muted/30 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-medium">Modifier l’itinéraire</div>
+                    <div className="text-xs text-muted-foreground">
+                      Cliquez pour revenir sur la carte, ajuster les arrêts et revenir ici pour finaliser.
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={onEditItinerary}>
+                    Éditer sur la carte
+                  </Button>
                 </div>
               </div>
-            </div>
+              <Separator className="my-4" />
+            </>
+          )}
 
-            {/* Booking */}
+          {/* Grids */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Booking left: trip/date/seat/status & distance */}
             <div className="space-y-3">
               <h3 className="text-sm font-medium text-muted-foreground">Détails réservation</h3>
               <div className="grid gap-2">
@@ -258,22 +274,17 @@ export default function AddEditReservationSheet({
                 </div>
 
                 <div className="grid gap-1.5">
+                  <Label>Distance totale (km)</Label>
+                  <Input value={typeof distanceKm === "number" ? distanceKm : 0} readOnly />
+                </div>
+
+                <div className="grid gap-1.5">
                   <Label>Sièges</Label>
                   <Input
                     type="number"
                     min={1}
                     value={form.seats ?? editing?.seats ?? 1}
                     onChange={(e) => setField("seats", Number(e.target.value) as any)}
-                  />
-                </div>
-
-                <div className="grid gap-1.5">
-                  <Label>Total (FCFA)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.priceTotal ?? editing?.priceTotal ?? 0}
-                    onChange={(e) => setField("priceTotal", Number(e.target.value) as any)}
                   />
                 </div>
 
@@ -286,6 +297,7 @@ export default function AddEditReservationSheet({
                         type="button"
                         variant={(form.status ?? editing?.status ?? "pending") === s ? "default" : "outline"}
                         onClick={() => setField("status", s as any)}
+                        className="capitalize"
                       >
                         {s === "pending" && "En attente"}
                         {s === "confirmed" && "Confirmée"}
@@ -297,8 +309,49 @@ export default function AddEditReservationSheet({
               </div>
             </div>
 
-            {/* Buses - full width on small */}
-            <div className="space-y-3 sm:col-span-2">
+            {/* Booking right: vehicle/event/total + buses */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-muted-foreground">Véhicules & tarification</h3>
+              <div className="grid gap-2">
+                <div className="grid gap-1.5">
+                  <Label>Type de véhicule</Label>
+                  <select
+                    className="h-9 rounded-md border bg-background px-3 text-sm capitalize"
+                    value={vehicleType}
+                    onChange={(e) => setVehicleType(e.target.value as VehicleType)}
+                  >
+                    <option value="hiace">hiace</option>
+                    <option value="coaster">coaster</option>
+                  </select>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>Évènement</Label>
+                  <select
+                    className="h-9 rounded-md border bg-background px-3 text-sm"
+                    value={eventType}
+                    onChange={(e) => setEventType(e.target.value as EventType)}
+                  >
+                    <option value="none">Aucun</option>
+                    <option value="marriage">Mariage</option>
+                    <option value="funeral">Funérailles</option>
+                    <option value="church">Église</option>
+                  </select>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>Total (FCFA)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.priceTotal ?? editing?.priceTotal ?? 0}
+                    onChange={(e) => setField("priceTotal", Number(e.target.value) as any)}
+                  />
+                </div>
+              </div>
+
+              <Separator className="my-2" />
+
               <h3 className="text-sm font-medium text-muted-foreground">Affectation des bus</h3>
               <MultiSelectBuses
                 value={busIds}
@@ -314,9 +367,41 @@ export default function AddEditReservationSheet({
 
           <Separator className="my-6" />
 
+          {/* Passenger */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-muted-foreground">Passager</h3>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label>Nom</Label>
+                <Input
+                  value={form.passenger?.name ?? ""}
+                  onChange={(e) => setNested("passenger.name", e.target.value)}
+                  placeholder="Nom et prénom"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Téléphone</Label>
+                <Input
+                  value={form.passenger?.phone ?? ""}
+                  onChange={(e) => setNested("passenger.phone", e.target.value)}
+                  placeholder="+242 …"
+                />
+              </div>
+              <div className="grid gap-1.5 lg:col-span-2">
+                <Label>Email (optionnel)</Label>
+                <Input
+                  value={form.passenger?.email ?? ""}
+                  onChange={(e) => setNested("passenger.email", e.target.value)}
+                  placeholder="email@exemple.com"
+                />
+              </div>
+            </div>
+          </div>
+
+          <Separator className="my-6" />
+
           <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-            Astuce : l’itinéraire se modifie directement sur la carte (cliquer pour ajouter un arrêt, glisser un marqueur
-            pour ajuster).
+            Astuce : l’itinéraire se modifie sur la carte (bouton « Éditer sur la carte » ci-dessus).
           </div>
         </div>
 
