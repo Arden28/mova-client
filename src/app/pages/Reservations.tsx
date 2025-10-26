@@ -132,7 +132,7 @@ export default function ReservationPage() {
         renderTitle: (r) => r.code,
         renderBody: (r) => {
           const pstat = derivePaymentStatus()
-          const busPlates = (r.busIds ?? []).map((id) => busPlateById.get(id) ?? id)
+          const busPlates = (r.busIds ?? []).map((id) => busPlateById.get(String(id)) ?? String(id))
           const dist = (r as UIReservation & { distanceKm?: number }).distanceKm
           return (
             <div className="grid gap-2 text-sm">
@@ -211,7 +211,7 @@ export default function ReservationPage() {
         id: "buses",
         header: "Bus",
         cell: ({ row }) => {
-          const plates = (row.original.busIds ?? []).map((id) => busPlateById.get(id) ?? id)
+          const plates = (row.original.busIds ?? []).map((id) => busPlateById.get(String(id)) ?? String(id))
           return (
             <div className="max-w-[260px] truncate text-right">
               {plates.length ? plates.join(", ") : "—"}
