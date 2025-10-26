@@ -27,6 +27,9 @@ import {
   IconFilter,
   IconRefresh,
   IconChevronDown,
+  IconLoader2,            // NEW
+  IconMoodConfuzed,       // NEW
+  IconSearch as IconSearchOutline, // NEW (alias to avoid name clash)
 } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
@@ -117,6 +120,7 @@ export type DataTableProps<T extends object> = {
   renderRowActions?: (row: T) => React.ReactNode
   /** bulk delete handler; called after user confirms */
   onDeleteSelected?: (rows: T[]) => void
+  /** show loading empty state */
   loading?: boolean
 }
 
@@ -164,6 +168,7 @@ export function DataTable<T extends object>({
   pageSizeOptions = [10, 20, 30, 40, 50],
   renderRowActions,
   onDeleteSelected,
+  loading, // NEW
 }: DataTableProps<T>) {
   const ALL_TOKEN = "__ALL__" // Radix Select can't use empty string
 
@@ -176,7 +181,10 @@ export function DataTable<T extends object>({
   const [rowSelection, setRowSelection] = React.useState({})
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 10 })
-  const [view, setView] = React.useState<ViewMode>(initialView)
+
+  // Normalize initial view so Grid can't be activated even if passed in
+  const normalizedInitialView: ViewMode = initialView === "grid" ? "list" : initialView
+  const [view, setView] = React.useState<ViewMode>(normalizedInitialView)
 
   /* ------------------------------ Search (UX) ------------------------------- */
   const [searchOpen, setSearchOpen] = React.useState(false)
@@ -379,6 +387,71 @@ export function DataTable<T extends object>({
 
   /* ------------------------------ Toolbar (UI) ------------------------------ */
 
+  // NEW: detect active search or filters (for better empty copy)
+  const hasActiveFilters =
+    Object.entries(filterSelections).some(([, v]) => !!v) || !!search.trim()
+
+  // NEW: reset UX helpers
+  function resetSearchAndFilters() {
+    setSearchInput("")
+    setSearch("")
+    clearAllFilters()
+    focusSearchSafely()
+  }
+
+  // NEW: Beautiful empty states (loading vs. nothing found)
+  function EmptyState() {
+    if (loading) {
+      return (
+        <div className="py-16">
+          <div className="mx-auto w-full max-w-md rounded-lg border bg-muted/30 p-6 text-center">
+            <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-background shadow ring-1 ring-border">
+              <IconLoader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+            <div className="text-base font-medium">Chargement des données…</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Merci de patienter, ceci peut prendre quelques secondes.
+            </p>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="py-16">
+        <div className="mx-auto w-full max-w-md rounded-lg border bg-muted/20 p-6 text-center">
+          <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-background shadow ring-1 ring-border">
+            {hasActiveFilters ? (
+              <IconSearchOutline className="size-5 text-muted-foreground" />
+            ) : (
+              <IconMoodConfuzed className="size-5 text-muted-foreground" />
+            )}
+          </div>
+          <div className="text-base font-semibold">
+            {hasActiveFilters ? "Aucun résultat trouvé" : "Aucun élément à afficher"}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {hasActiveFilters
+              ? "Ajustez votre recherche ou vos filtres pour élargir les résultats."
+              : "Lorsque des données seront disponibles, elles s’afficheront ici."}
+          </p>
+
+          {hasActiveFilters && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={resetSearchAndFilters}
+              >
+                Réinitialiser la recherche et les filtres
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   function ActiveFilterChips() {
     const entries = Object.entries(filterSelections).filter(([, v]) => v && v !== ALL_TOKEN)
     if (!entries.length) return null
@@ -541,10 +614,11 @@ export function DataTable<T extends object>({
               </Button>
               <Button
                 type="button"
-                variant={view === "grid" ? "default" : "ghost"}
+                variant="ghost"
                 size="sm"
-                className="gap-1 rounded-l-none"
-                onClick={() => setView("grid")}
+                className="gap-1 rounded-l-none opacity-50 pointer-events-none"
+                disabled
+                title="Grid indisponible pour le moment"
               >
                 <IconGridDots className="size-4" />
                 <span className="hidden md:inline">Grid</span>
@@ -582,8 +656,7 @@ export function DataTable<T extends object>({
     )
   }
 
-  /* ------------------------------ Grid rendering ----------------------------- */
-
+  /* ------------------------------ Grid rendering (kept but unreachable) ------ */
   function AutoCard({ row }: { row: any }) {
     // Build from leaf, visible columns (skip _select/_actions) WITHOUT flexRender
     const visibleCols = table
@@ -662,9 +735,9 @@ export function DataTable<T extends object>({
 
       {/* LIST VIEW */}
       {view === "list" ? (
-        <div className="relative">
-          <div className="overflow-x-auto border">
-            <Table className="min-w-full">
+        <div className="relative -mx-4 lg:-mx-6">{/* match toolbar edges */}
+          <div className="overflow-x-auto border-x">{/* side borders only */}
+            <Table className="w-full min-w-full">{/* ensure full width */}
               <TableHeader className="bg-muted sticky top-0 z-10">
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id}>
@@ -682,10 +755,11 @@ export function DataTable<T extends object>({
                 {(() => {
                   const rows = table.getRowModel().rows
                   if (!rows?.length) {
+                    // Improved empty states
                     return (
                       <TableRow>
-                        <TableCell colSpan={composedColumns.length} className="h-24 text-center">
-                          No results.
+                        <TableCell colSpan={composedColumns.length} className="h-auto p-0">
+                          <EmptyState />
                         </TableCell>
                       </TableRow>
                     )
@@ -741,7 +815,7 @@ export function DataTable<T extends object>({
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between px-4 mt-3">
+          <div className="flex items-center justify-between px-4 lg:px-6 mt-3">{/* keep padding here */}
             <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">
               {table.getFilteredSelectedRowModel().rows.length} of{" "}
               {table.getFilteredRowModel().rows.length} row(s) selected.
@@ -815,7 +889,7 @@ export function DataTable<T extends object>({
           </div>
         </div>
       ) : (
-        /* GRID VIEW */
+        /* GRID VIEW — will never be reachable because Grid is disabled */
         <div className="flex flex-col gap-3">
           {currentGroup && grouped
             ? Object.entries(grouped).map(([label, rows]) => (

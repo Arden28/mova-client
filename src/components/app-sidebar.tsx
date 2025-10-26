@@ -1,18 +1,15 @@
-// import Image from "next/image";
-import * as React from "react";
+// src/components/AppSidebar.tsx
+"use client"
+
+import * as React from "react"
+import { NavLink } from "react-router-dom"
 import {
-  IconHelp,
-  IconBus,
   IconGauge,
   IconSettings,
-  IconTicket,
-  IconUsersGroup,
-  IconUserCog,
-} from "@tabler/icons-react";
+  IconBell,
+} from "@tabler/icons-react"
 
-import { NavMain } from "@/components/nav-main";
-import { NavSecondary } from "@/components/nav-secondary";
-import { NavUser } from "@/components/nav-user";
+import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
   SidebarContent,
@@ -21,66 +18,83 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
 
-const data = {
-  user: {
-    name: "Arden BOUET",
-    email: "admin@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
-  navMain: [
-    { title: "Tableau de bord", url: "/overview", icon: IconGauge },
-    { title: "Réservations", url: "/reservations", icon: IconTicket },
-    { title: "Bus", url: "/buses", icon: IconBus },
-    { title: "Chauffeurs & Propriétaires", url: "/people", icon: IconUsersGroup },
-    { title: "Staff", url: "/staff", icon: IconUserCog },
-  ],
-  navSecondary: [
-    {
-      title: "Paramètres",
-      url: "/settings",
-      icon: IconSettings,
-    },
-    {
-      title: "Aide",
-      url: "#",
-      icon: IconHelp,
-    },
-  ],
-};
-
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   return (
-    <Sidebar collapsible="offcanvas" {...props}>
-      <SidebarHeader>
+    <Sidebar
+      // Fixed + compact: never collapses
+      collapsible="none"
+      className={cn(
+        // narrow rail-style width
+        "w-[68px] data-[state=expanded]:w-[68px] data-[state=collapsed]:w-[68px]",
+        "border-r"
+      )}
+      {...props}
+    >
+      {/* Top: Logo only (no text) */}
+      <SidebarHeader className="p-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
-            >
-              <a href="#" className="flex items-center gap-2">
+            <SidebarMenuButton asChild className="justify-center p-2">
+              <NavLink to="/" aria-label="Accueil">
                 <img
                   src="/assets/images/logo.png"
-                  alt="Mova Logo"
-                  width={50}
-                  height={50}
-                  className="rounded-md"
+                  alt="Mova"
+                  width={40}
+                  height={40}
+                  className="rounded-md mx-auto"
                 />
-                <span className="text-base font-semibold">Mova Manager</span>
-              </a>
+              </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
-        <NavMain items={data.navMain} />
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+
+      {/* Middle: icons only */}
+      <SidebarContent className="px-0">
+        <SidebarMenu className="gap-1">
+          {/* Dashboard only (icon, no text) */}
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild className="justify-center p-2" tooltip="Tableau de bord">
+              <NavLink to="/overview" aria-label="Tableau de bord" title="Tableau de bord">
+                <IconGauge className="h-5 w-5" />
+                <span className="sr-only">Tableau de bord</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
+          {/* Divider-ish spacing */}
+          <div className="my-2" />
+
+          {/* Settings (icon only) */}
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild className="justify-center p-2" tooltip="Paramètres">
+              <NavLink to="/settings" aria-label="Paramètres" title="Paramètres">
+                <IconSettings className="h-5 w-5" />
+                <span className="sr-only">Paramètres</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
+          {/* Notifications (icon only, works like nav link, no badge) */}
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild className="justify-center p-2" tooltip="Notifications">
+              <NavLink to="/notifications" aria-label="Notifications" title="Notifications">
+                <IconBell className="h-5 w-5" />
+                <span className="sr-only">Notifications</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarContent>
-      <SidebarFooter>
-        <NavUser />
+
+      {/* Bottom: avatar only (dropdown on click) */}
+      <SidebarFooter className="p-2">
+        {/* NavUser already handles its dropdown; we keep only the avatar visually */}
+        <NavUser compact />
       </SidebarFooter>
     </Sidebar>
-  );
+  )
 }

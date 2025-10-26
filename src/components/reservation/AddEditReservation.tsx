@@ -808,6 +808,7 @@ export default function AddEditReservationDialog({
                     value={form.priceTotal ?? 0}
                     onChange={(e) => setField("priceTotal", Number(e.target.value) as any)}
                     className="pr-16"
+                    readOnly
                   />
                   <div className="pointer-events-none absolute inset-y-0 right-0 grid w-16 place-items-center text-xs text-muted-foreground">
                     FCFA

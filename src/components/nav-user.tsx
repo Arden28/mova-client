@@ -1,12 +1,12 @@
-// src/components/layout/NavUser.tsx
+// src/components/nav-user.tsx
+"use client"
+
+import * as React from "react"
+import { Link } from "react-router-dom"
 import {
-  IconDotsVertical,
   IconLogout,
   IconUserCircle,
 } from "@tabler/icons-react"
-import { Link } from "react-router-dom"
-import * as React from "react"
-
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -35,7 +35,6 @@ function getInitials(name?: string) {
   return (first + last).toUpperCase() || name.slice(0, 2).toUpperCase()
 }
 
-/** Optional avatar property on the user object */
 type UserWithAvatar = {
   id: string
   name: string
@@ -44,28 +43,22 @@ type UserWithAvatar = {
   avatar?: string | null
 }
 
-export function NavUser() {
+export function NavUser({ compact = false }: { compact?: boolean }) {
   const { isMobile } = useSidebar()
   const { status, user, logout } = useAuth()
 
-  // While auth is resolving, you can render a lightweight skeleton (or nothing)
   if (status === "loading") {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
-          <div className="flex items-center gap-3 px-3 py-2">
+          <div className="flex items-center justify-center p-2">
             <div className="h-8 w-8 rounded-lg bg-muted animate-pulse" />
-            <div className="flex-1 space-y-1">
-              <div className="h-3 w-24 bg-muted rounded animate-pulse" />
-              <div className="h-3 w-36 bg-muted rounded animate-pulse" />
-            </div>
           </div>
         </SidebarMenuItem>
       </SidebarMenu>
     )
   }
 
-  // If not authenticated, don't render the user menu at all
   if (!user) return null
 
   const u = user as UserWithAvatar
@@ -76,12 +69,13 @@ export function NavUser() {
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
+            {/* Avatar-only trigger (no name/email, stays compact) */}
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="justify-center p-2"
+              aria-label="Ouvrir le menu utilisateur"
             >
               <Avatar className="h-8 w-8 rounded-lg grayscale">
-                {/* If you later store avatar in profile, it will render here */}
                 {u.avatar ? (
                   <AvatarImage src={u.avatar} alt={u.name} />
                 ) : (
@@ -89,15 +83,6 @@ export function NavUser() {
                 )}
                 <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
               </Avatar>
-
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{u.name}</span>
-                <span className="text-muted-foreground truncate text-xs">
-                  {u.email}
-                </span>
-              </div>
-
-              <IconDotsVertical className="ml-auto size-4" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
 
@@ -119,9 +104,7 @@ export function NavUser() {
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{u.name}</span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {u.email}
-                  </span>
+                  <span className="text-muted-foreground truncate text-xs">{u.email}</span>
                 </div>
               </div>
             </DropdownMenuLabel>
@@ -130,7 +113,7 @@ export function NavUser() {
 
             <DropdownMenuGroup>
               <DropdownMenuItem asChild>
-                <Link to="/account" className="flex items-center gap-2 hover:bg-gray-100">
+                <Link to="/account" className="flex items-center gap-2">
                   <IconUserCircle />
                   Mon compte
                 </Link>
@@ -139,7 +122,6 @@ export function NavUser() {
 
             <DropdownMenuSeparator />
 
-            {/* Call real logout from AuthContext */}
             <DropdownMenuItem
               onSelect={(e) => {
                 e.preventDefault()
