@@ -13,8 +13,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import type { ColumnDef } from "@tanstack/react-table"
-import { DataTable, makeDrawerTriggerColumn } from "@/components/data-table"
-import type { FilterConfig } from "@/components/data-table"
+
+import { DataTable } from "@/components/data-table"
+import { makeDrawerTriggerColumn } from "@/components/data-table-helpers"
+import type { FilterConfig, GroupByConfig } from "@/components/data-table"
 
 import ImportDialog from "@/components/common/ImportDialog"
 import {
@@ -360,6 +362,19 @@ export default function StaffPage() {
       </>
     )
   }
+  
+  
+  const groupBy: GroupByConfig<Staff>[] = [
+    {
+      id: "role",
+      label: "Role",
+      accessor: (r: Staff) => r.role ?? "—",
+    },
+  ]
+  
+    
+  // getRowId (typed id param if you use it elsewhere)
+  const getRowId = (r: Staff) => String(r.id)
 
   return (
     <div className="space-y-5">
@@ -375,8 +390,8 @@ export default function StaffPage() {
       <DataTable<Staff>
         data={rows}
         columns={columns}
-        getRowId={(r) => r.id}
-        searchable={searchable}
+        getRowId={getRowId}
+        searchable={{ placeholder: "Rechercher nom, téléphone, email…", fields: ["name", "phone", "email"] }}
         filters={filters}
         loading={loading}
         onAdd={() => { setEditing(null); setOpen(true) }}
@@ -384,7 +399,10 @@ export default function StaffPage() {
         onImport={() => setOpenImport(true)}
         importLabel="Importer"
         renderRowActions={renderRowActions}
-        drawer={{ triggerField: "name" }}
+        // drawer={{ triggerField: "name" }}
+        groupBy={groupBy}
+        initialView="list"
+        pageSizeOptions={[10, 20, 50]}
         onDeleteSelected={async (selected) => {
           if (selected.length === 0) return
           const prev = rows

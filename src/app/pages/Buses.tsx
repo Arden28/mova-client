@@ -229,7 +229,7 @@ export default function BusesPage() {
         data={rows}
         columns={columns}
         getRowId={getRowId}
-        searchable={searchable}
+        searchable={{ placeholder: "Rechercher immatriculation, modèle…", fields: ["plate", "model"] }}
         filters={filters}
         loading={loading}
         onAdd={() => {
