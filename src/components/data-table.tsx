@@ -729,7 +729,7 @@ export function DataTable<T extends object>({
   /* ---------------------------------- Render ---------------------------------- */
   return (
     <div className="-mx-4 lg:-mx-6 w-full flex flex-col justify-start">
-      <div className="pt-1 px-4 lg:px-6">
+      <div className="pt-1 px-2 lg:px-4">
         <Toolbar />
       </div>
 
