@@ -441,7 +441,7 @@ export function DataTable<T extends object>({
                   </SelectTrigger>
                   <SelectContent align="start">
                     <SelectItem value={ALL_TOKEN}>
-                      All {typeof total === "number" ? `(${total})` : ""}
+                      Tous {typeof total === "number" ? `(${total})` : ""}
                     </SelectItem>
                     {f.options.map((o) => (
                       <SelectItem key={o.value} value={o.value}>
@@ -464,7 +464,7 @@ export function DataTable<T extends object>({
                   <SelectValue placeholder="Group by" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No grouping</SelectItem>
+                  <SelectItem value="none">Group</SelectItem>
                   {groupBy.map((g) => (
                     <SelectItem key={g.id} value={g.id}>
                       {g.label}
@@ -662,7 +662,7 @@ export function DataTable<T extends object>({
 
       {/* LIST VIEW */}
       {view === "list" ? (
-        <div className="relative flex flex-col overflow-auto">
+        <div className="relative">
           <div className="overflow-x-auto border">
             <Table className="min-w-full">
               <TableHeader className="bg-muted sticky top-0 z-10">
