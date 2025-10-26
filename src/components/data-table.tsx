@@ -729,13 +729,13 @@ export function DataTable<T extends object>({
   /* ---------------------------------- Render ---------------------------------- */
   return (
     <div className="-mx-4 lg:-mx-6 w-full flex flex-col justify-start">
-      <div className="pt-1 px-2 lg:px-4">
+      <div className="pt-1 px-4 lg:px-6">
         <Toolbar />
       </div>
 
       {/* LIST VIEW */}
       {view === "list" ? (
-        <div className="relative px-4 lg:px-6 ">{/* match toolbar edges */}
+        <div className="px-2 lg:px-3 ">{/* match toolbar edges */}
           <div className="overflow-x-auto border-x">{/* side borders only */}
             <Table className="w-full min-w-full">{/* ensure full width */}
               <TableHeader className="bg-muted sticky top-0 z-10">
