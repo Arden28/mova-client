@@ -655,8 +655,8 @@ export function DataTable<T extends object>({
 
   /* ---------------------------------- Render ---------------------------------- */
   return (
-    <div className="-mx-4 lg:-mx-6 w-full flex flex-col justify-start gap-4">
-      <div className="pt-1">
+    <div className="-mx-4 lg:-mx-6 w-full flex flex-col justify-start">
+      <div className="pt-1 px-4 lg:px-6">
         <Toolbar />
       </div>
 
