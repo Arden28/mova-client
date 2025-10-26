@@ -50,169 +50,199 @@ function EmptyState({
 }
 
 export function SiteHeader() {
-  // Replace with your store / props as needed
+  // Notifications (sample – replace with your store)
   const [notifications, setNotifications] = React.useState<NotificationItem[]>([])
   const unreadCount = notifications.filter((n) => n.unread).length
   const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))
 
+  // Sub headbar tabs (local state; swap with routing if you want)
+  const subTabs = ["Tous", "Récents", "Favoris"] as const
+  type SubTab = (typeof subTabs)[number]
+  const [activeSub, setActiveSub] = React.useState<SubTab>("Tous")
+
   return (
-    <header className="relative z-40 flex h-[56px] items-center border-b bg-background/80 backdrop-blur-md px-4 lg:px-6">
-      {/* Left: Sidebar trigger (like Airtable’s hamburger) */}
-      <div className="flex items-center gap-2">
-        <SidebarTrigger className="-ml-1" />
-      </div>
+    <>
+      {/* Main header */}
+      <header className="relative z-40 flex h-[56px] items-center border-b bg-background/80 backdrop-blur-md px-4 lg:px-6">
+        {/* Left: Sidebar trigger */}
+        <div className="flex items-center gap-2">
+          <SidebarTrigger className="-ml-1" />
+        </div>
 
-      {/* Center: Airtable-like top nav */}
-      <nav className="pointer-events-auto absolute left-1/2 -translate-x-1/2">
-        <ul className="flex items-center gap-6 rounded-full bg-background/70 px-3 py-1.5 ring-1 ring-border shadow-sm">
-          <li>
-            <NavLink
-              to="/data"
-              className={({ isActive }) =>
-                cn(
-                  "relative rounded-md px-3 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
-                  "after:absolute after:left-2 after:right-2 after:-bottom-1 after:h-[2px] after:w-0 after:bg-primary after:transition-all",
-                  isActive
-                    ? "text-foreground after:w-[calc(100%-1rem)]"
-                    : "hover:after:w-[calc(100%-1rem)]"
-                )
-              }
-            >
-              Données
-            </NavLink>
-          </li>
-          <li>
-            <NavLink
-              to="/locations"
-              className={({ isActive }) =>
-                cn(
-                  "relative rounded-md px-3 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
-                  "after:absolute after:left-2 after:right-2 after:-bottom-1 after:h-[2px] after:w-0 after:bg-primary after:transition-all",
-                  isActive
-                    ? "text-foreground after:w-[calc(100%-1rem)]"
-                    : "hover:after:w-[calc(100%-1rem)]"
-                )
-              }
-            >
-              Locations
-            </NavLink>
-          </li>
-        </ul>
-      </nav>
+        {/* Center: plain nav, underline when active (Airtable-like) */}
+        <nav className="pointer-events-auto absolute left-1/2 -translate-x-1/2">
+          <ul className="flex items-center gap-6">
+            <li>
+              <NavLink
+                to="/data"
+                className={({ isActive }) =>
+                  cn(
+                    "inline-flex items-center px-1.5 py-1 text-sm font-medium",
+                    "text-muted-foreground hover:text-foreground transition-colors",
+                    "border-b-2 border-transparent",
+                    isActive && "text-foreground border-primary"
+                  )
+                }
+              >
+                Données
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
+                to="/locations"
+                className={({ isActive }) =>
+                  cn(
+                    "inline-flex items-center px-1.5 py-1 text-sm font-medium",
+                    "text-muted-foreground hover:text-foreground transition-colors",
+                    "border-b-2 border-transparent",
+                    isActive && "text-foreground border-primary"
+                  )
+                }
+              >
+                Locations
+              </NavLink>
+            </li>
+          </ul>
+        </nav>
 
-      {/* Right: Notifications */}
-      <div className="ml-auto flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "relative",
-                "hover:bg-accent hover:text-accent-foreground",
-                "data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
-              )}
-            >
-              <IconBell className="h-5 w-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
-                  {unreadCount}
-                </span>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent
-            align="end"
-            className={cn(
-              "w-80 p-0",
-              "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
-              "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
-            )}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3">
-              <div className="space-y-0.5">
-                <p className="text-sm font-medium">Notifications</p>
-                <p className="text-xs text-muted-foreground">
-                  {unreadCount > 0
-                    ? `${unreadCount} non lue${unreadCount > 1 ? "s" : ""}`
-                    : "Aucune non lue"}
-                </p>
-              </div>
+        {/* Right: Notifications */}
+        <div className="ml-auto flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                size="sm"
-                className="gap-1"
-                onClick={markAllRead}
-                disabled={unreadCount === 0}
+                size="icon"
+                className={cn(
+                  "relative",
+                  "hover:bg-accent hover:text-accent-foreground",
+                  "data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
+                )}
               >
-                <CheckCheck className="h-4 w-4" />
-                <span className="hidden sm:inline">Tout marquer lu</span>
+                <IconBell className="h-5 w-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+                    {unreadCount}
+                  </span>
+                )}
               </Button>
-            </div>
+            </DropdownMenuTrigger>
 
-            {/* List / Empty */}
-            {notifications.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <ScrollArea className="max-h-80">
-                <ul className="divide-y">
-                  {notifications.map((n) => (
-                    <li
-                      key={n.id}
-                      className={cn(
-                        "flex items-start gap-3 p-4 transition-colors hover:bg-accent/40",
-                        n.unread && "bg-accent/20"
-                      )}
-                    >
-                      <div className="pt-0.5">
-                        <Badge
-                          variant={
-                            n.type === "success"
-                              ? "default"
-                              : n.type === "warning"
-                              ? "secondary"
-                              : n.type === "error"
-                              ? "destructive"
-                              : "outline"
-                          }
-                          className="text-[10px]"
-                        >
-                          {n.type ?? "info"}
-                        </Badge>
-                      </div>
+            <DropdownMenuContent
+              align="end"
+              className={cn(
+                "w-80 p-0",
+                "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+                "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
+              )}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium">Notifications</p>
+                  <p className="text-xs text-muted-foreground">
+                    {unreadCount > 0
+                      ? `${unreadCount} non lue${unreadCount > 1 ? "s" : ""}`
+                      : "Aucune non lue"}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1"
+                  onClick={markAllRead}
+                  disabled={unreadCount === 0}
+                >
+                  <CheckCheck className="h-4 w-4" />
+                  <span className="hidden sm:inline">Tout marquer lu</span>
+                </Button>
+              </div>
 
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium leading-5">{n.title}</p>
-                        {n.description && (
-                          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                            {n.description}
-                          </p>
+              {/* List / Empty */}
+              {notifications.length === 0 ? (
+                <EmptyState />
+              ) : (
+                <ScrollArea className="max-h-80">
+                  <ul className="divide-y">
+                    {notifications.map((n) => (
+                      <li
+                        key={n.id}
+                        className={cn(
+                          "flex items-start gap-3 p-4 transition-colors hover:bg-accent/40",
+                          n.unread && "bg-accent/20"
                         )}
-                        <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                          {n.unread && <Dot className="h-4 w-4" />}
-                          {n.time && <span>{n.time}</span>}
+                      >
+                        <div className="pt-0.5">
+                          <Badge
+                            variant={
+                              n.type === "success"
+                                ? "default"
+                                : n.type === "warning"
+                                ? "secondary"
+                                : n.type === "error"
+                                ? "destructive"
+                                : "outline"
+                            }
+                            className="text-[10px]"
+                          >
+                            {n.type ?? "info"}
+                          </Badge>
                         </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </ScrollArea>
-            )}
 
-            {/* Footer */}
-            <div className="flex items-center justify-between px-4 py-2">
-              <Button variant="ghost" size="sm">
-                Voir tout
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setNotifications([])}>
-                Vider
-              </Button>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium leading-5">{n.title}</p>
+                          {n.description && (
+                            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                              {n.description}
+                            </p>
+                          )}
+                          <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                            {n.unread && <Dot className="h-4 w-4" />}
+                            {n.time && <span>{n.time}</span>}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </ScrollArea>
+              )}
+
+              {/* Footer */}
+              <div className="flex items-center justify-between px-4 py-2">
+                <Button variant="ghost" size="sm">
+                  Voir tout
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setNotifications([])}>
+                  Vider
+                </Button>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      {/* Secondary headbar (tabs on light primary) */}
+      <div className="z-30 border-b bg-primary/5">
+        <div className="mx-auto flex h-10 w-full max-w-screen-2xl items-center justify-center gap-1 px-4">
+          {subTabs.map((t) => {
+            const active = activeSub === t
+            return (
+              <button
+                key={t}
+                onClick={() => setActiveSub(t)}
+                className={cn(
+                  "px-3 py-1 text-sm rounded-md transition-colors",
+                  "hover:bg-primary/10 hover:text-primary",
+                  active
+                    ? "bg-primary/10 text-primary ring-1 ring-primary/20"
+                    : "text-muted-foreground"
+                )}
+              >
+                {t}
+              </button>
+            )
+          })}
+        </div>
       </div>
-    </header>
+    </>
   )
 }

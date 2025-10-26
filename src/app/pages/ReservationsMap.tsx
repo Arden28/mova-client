@@ -97,6 +97,16 @@ async function geocodeForwardCG(
     }))
 }
 
+/* ---------------------------- Reverse Geocoding ---------------------------- */
+async function reverseGeocode(lng: number, lat: number, token: string) {
+  if (!token) return undefined
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&limit=1&language=fr`
+  const r = await fetch(url)
+  if (!r.ok) return undefined
+  const j = await r.json()
+  return j?.features?.[0]?.place_name as string | undefined
+}
+
 export default function ReservationsMapPage() {
   const [rows, setRows] = React.useState<UIReservation[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -256,10 +266,66 @@ export default function ReservationsMapPage() {
     const map = mapRef.current
     if (!map || !mapLoaded) return
 
+    // clear previous markers + popup
     markersRef.current.forEach((m) => m.remove())
     markersRef.current = []
     popupRef.current?.remove()
     popupRef.current = null
+
+    // Focused route-editing mode: ONLY show draft points, hide other reservations and popup
+    if (routeEditMode) {
+      const wps = draftWps ?? []
+      const allLngLat: mapboxgl.LngLatLike[] = []
+
+      wps.forEach((wp, i) => {
+        allLngLat.push([wp.lng, wp.lat])
+
+        const el = document.createElement("div")
+        el.className =
+          i === 0
+            ? "rounded-full bg-primary text-primary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
+            : i === wps.length - 1
+            ? "rounded-full bg-secondary text-secondary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
+            : "rounded-full bg-muted text-foreground text-[10px] px-1.5 py-0.5 shadow ring-1 ring-black/10"
+        el.textContent = i === 0 ? "De" : i === wps.length - 1 ? "Ar" : alpha[i] ?? String(i + 1)
+
+        const marker = new mapboxgl.Marker({ element: el, draggable: true })
+          .setLngLat([wp.lng, wp.lat])
+          .addTo(map)
+
+        marker.on("dragend", async () => {
+          const pos = marker.getLngLat()
+          const newLabel = (await reverseGeocode(pos.lng, pos.lat, MAPBOX_TOKEN)) || (wps[i]?.label ?? `Point ${i + 1}`)
+          setDraftWps((prev) => {
+            if (!prev) return prev
+            const next = [...prev]
+            next[i] = { ...(next[i] || {}), lat: pos.lat, lng: pos.lng, label: newLabel }
+            return next
+          })
+        })
+
+        markersRef.current.push(marker)
+      })
+
+      // Fit bounds nicely
+      if (allLngLat.length === 1) {
+        const [lng, lat] = allLngLat[0] as [number, number]
+        requestAnimationFrame(() => {
+          try {
+            map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 14), duration: 500 })
+          } catch {}
+        })
+      } else if (allLngLat.length > 1) {
+        const b = new mapboxgl.LngLatBounds(allLngLat[0] as [number, number], allLngLat[0] as [number, number])
+        allLngLat.forEach((c) => b.extend(c as [number, number]))
+        requestAnimationFrame(() => {
+          try {
+            map.fitBounds(b, { padding: 60, maxZoom: 16, duration: 600 })
+          } catch {}
+        })
+      }
+      return // ← skip normal rendering while focused
+    }
 
     const allLngLat: mapboxgl.LngLatLike[] = []
 
@@ -272,20 +338,9 @@ export default function ReservationsMapPage() {
       elDe.className =
         "rounded-full bg-primary text-primary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
       elDe.textContent = "De"
-      const mDe = new mapboxgl.Marker({ element: elDe, draggable: routeEditMode })
+      const mDe = new mapboxgl.Marker({ element: elDe, draggable: false })
         .setLngLat([start.lng, start.lat])
         .addTo(map)
-      if (routeEditMode) {
-        mDe.on("dragend", () => {
-          const pos = mDe.getLngLat()
-          setDraftWps((prev) => {
-            if (!prev) return prev
-            const next = [...prev]
-            next[0] = { ...(next[0] || {}), lat: pos.lat, lng: pos.lng }
-            return next
-          })
-        })
-      }
       markersRef.current.push(mDe)
 
       // Intermediates
@@ -296,21 +351,9 @@ export default function ReservationsMapPage() {
           el.className =
             "rounded-full bg-muted text-foreground text-[10px] px-1.5 py-0.5 shadow ring-1 ring-black/10"
           el.textContent = alpha[i + 1] ?? String(i + 1)
-          const m = new mapboxgl.Marker({ element: el, draggable: routeEditMode })
+          const m = new mapboxgl.Marker({ element: el, draggable: false })
             .setLngLat([wp.lng, wp.lat])
             .addTo(map)
-          if (routeEditMode) {
-            const idx = i
-            m.on("dragend", () => {
-              const pos = m.getLngLat()
-              setDraftWps((prev) => {
-                if (!prev) return prev
-                const next = [...prev]
-                next[idx] = { ...(next[idx] || {}), lat: pos.lat, lng: pos.lng }
-                return next
-              })
-            })
-          }
           markersRef.current.push(m)
         }
       }
@@ -322,26 +365,14 @@ export default function ReservationsMapPage() {
         elAr.className =
           "rounded-full bg-secondary text-secondary-foreground text-[11px] px-2 py-1 shadow ring-1 ring-black/10"
         elAr.textContent = "Ar"
-        const mAr = new mapboxgl.Marker({ element: elAr, draggable: routeEditMode })
+        const mAr = new mapboxgl.Marker({ element: elAr, draggable: false })
           .setLngLat([end.lng, end.lat])
           .addTo(map)
-        if (routeEditMode) {
-          const idx = activeWps.length - 1
-          mAr.on("dragend", () => {
-            const pos = mAr.getLngLat()
-            setDraftWps((prev) => {
-              if (!prev) return prev
-              const next = [...prev]
-              next[idx] = { ...(next[idx] || {}), lat: pos.lat, lng: pos.lng }
-              return next
-            })
-          })
-        }
         markersRef.current.push(mAr)
       }
 
-      // Popup (view mode)
-      if (!routeEditMode && start) {
+      // Popup (view mode only)
+      if (start) {
         const card = document.createElement("div")
         card.className =
           "w-[280px] sm:w-[320px] rounded-lg border bg-background shadow-lg overflow-hidden pointer-events-auto"
@@ -371,7 +402,6 @@ export default function ReservationsMapPage() {
           </div>
         `
 
-        const map = mapRef.current!
         const popup = new mapboxgl.Popup({
           closeButton: false,
           closeOnClick: false,
@@ -389,6 +419,7 @@ export default function ReservationsMapPage() {
         card.querySelector<HTMLButtonElement>("#popup-edit-route")?.addEventListener("click", () => {
           const wps = (selected as any)?.waypoints as Waypoint[] | undefined
           setDraftWps(wps ? JSON.parse(JSON.stringify(wps)) : [])
+          setDraftDistanceKm((selected as any)?.distanceKm ?? null)
           setRouteEditMode(true)
           setShowWpPanel(true)
         })
@@ -404,6 +435,7 @@ export default function ReservationsMapPage() {
       }
     } else {
       // LIST VIEW: show "De" for each reservation
+      const allLngLat: mapboxgl.LngLatLike[] = []
       filtered.forEach((r) => {
         const wps = (r as any).waypoints as Waypoint[] | undefined
         if (!wps || wps.length < 1) return
@@ -420,12 +452,49 @@ export default function ReservationsMapPage() {
         mDe.getElement().addEventListener("click", () => setSelected(r))
         markersRef.current.push(mDe)
       })
+
+      // Fit bounds for list view
+      if (allLngLat.length) {
+        if (allLngLat.length === 1) {
+          const [lng, lat] = allLngLat[0] as [number, number]
+          requestAnimationFrame(() => {
+            try {
+              map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 13), duration: 500 })
+            } catch {}
+          })
+        } else {
+          const bounds = new mapboxgl.LngLatBounds(
+            allLngLat[0] as [number, number],
+            allLngLat[0] as [number, number]
+          )
+          allLngLat.forEach((c) => bounds.extend(c as [number, number]))
+          const container = map.getContainer()
+          const w = container.clientWidth
+          const h = container.clientHeight
+          const basePadding = 60
+          const maxPad = Math.max(0, Math.floor(Math.min(w, h) / 2 - 4))
+          const safePadding = Math.min(basePadding, maxPad)
+          requestAnimationFrame(() => {
+            try {
+              if (safePadding > 0) map.fitBounds(bounds, { padding: safePadding, maxZoom: 16, duration: 600 })
+              else map.easeTo({ center: bounds.getCenter(), zoom: 13.5, duration: 500 })
+            } catch {
+              try {
+                map.easeTo({ center: bounds.getCenter(), zoom: 13.5, duration: 500 })
+              } catch {}
+            }
+          })
+        }
+      }
+      return
     }
 
-    // Fit bounds safely
-    if (!allLngLat.length) return
-    if (allLngLat.length === 1) {
-      const [lng, lat] = allLngLat[0] as [number, number]
+    // If we rendered in selected-view above, also fit bounds
+    const allLngLatSelected: mapboxgl.LngLatLike[] = []
+    activeWps?.forEach((w) => allLngLatSelected.push([w.lng, w.lat]))
+    if (!allLngLatSelected.length) return
+    if (allLngLatSelected.length === 1) {
+      const [lng, lat] = allLngLatSelected[0] as [number, number]
       requestAnimationFrame(() => {
         try {
           map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 13), duration: 500 })
@@ -434,10 +503,10 @@ export default function ReservationsMapPage() {
       return
     }
     const bounds = new mapboxgl.LngLatBounds(
-      allLngLat[0] as [number, number],
-      allLngLat[0] as [number, number]
+      allLngLatSelected[0] as [number, number],
+      allLngLatSelected[0] as [number, number]
     )
-    allLngLat.forEach((c) => bounds.extend(c as [number, number]))
+    allLngLatSelected.forEach((c) => bounds.extend(c as [number, number]))
 
     const container = map.getContainer()
     const w = container.clientWidth
@@ -456,7 +525,7 @@ export default function ReservationsMapPage() {
         } catch {}
       }
     })
-  }, [filtered, selected, mapLoaded, routeEditMode, activeWps])
+  }, [filtered, selected, mapLoaded, routeEditMode, activeWps, draftWps])
 
   /* ---------------------- Selected/draft route overlay (driving) ------------- */
   React.useEffect(() => {
@@ -525,11 +594,12 @@ export default function ReservationsMapPage() {
 
     if (!routeEditMode) return
 
-    const onClick = (e: mapboxgl.MapMouseEvent) => {
+    const onClick = async (e: mapboxgl.MapMouseEvent) => {
       const { lng, lat } = e.lngLat
+      const name = (await reverseGeocode(lng, lat, MAPBOX_TOKEN)) || `Point ${(draftWps?.length ?? 0) + 1}`
       setDraftWps((prev) => {
         const next = prev ? [...prev] : []
-        next.push({ lat, lng, label: `Point ${next.length + 1}` })
+        next.push({ lat, lng, label: name })
         return next
       })
     }
@@ -543,7 +613,7 @@ export default function ReservationsMapPage() {
         clickHandlerRef.current = null
       }
     }
-  }, [routeEditMode])
+  }, [routeEditMode, draftWps?.length])
 
   // Resize on UI changes
   React.useEffect(() => {
@@ -688,6 +758,10 @@ export default function ReservationsMapPage() {
     } catch (e: any) {
       toast.error(e?.message ?? "Échec de l’enregistrement de l’itinéraire.")
     }
+
+    // Seamless flow: go back to the sheet immediately after editing
+    setEditing(updated)
+    setOpenEditSheet(true)
 
     setRouteEditMode(false)
     setDraftWps(null)
@@ -1111,7 +1185,7 @@ export default function ReservationsMapPage() {
           setCreatingNew(false)
           setShowWpPanel(true)
           setOpenEditSheet(false)
-          setSelected(editing) // keep context on map (optional)
+          setSelected(editing) // keep context on map
         }}
       />
     </div>

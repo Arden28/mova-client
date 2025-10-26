@@ -25,6 +25,7 @@ import {
   CommandItem,
 } from "@/components/ui/command"
 import { cn } from "@/lib/utils"
+import api from "@/api/apiService"
 
 type MultiSelectOption = { label: string; value: string }
 
@@ -118,6 +119,7 @@ type Props = {
 
 type VehicleType = "hiace" | "coaster"
 type EventType = "none" | "marriage" | "funeral" | "church"
+type QuoteResponse = { currency: string; client_payable: number; bus_payable: number }
 
 export default function AddEditReservationSheet({
   open,
@@ -131,6 +133,7 @@ export default function AddEditReservationSheet({
   const [busIds, setBusIds] = React.useState<string[]>([])
   const [vehicleType, setVehicleType] = React.useState<VehicleType>("hiace")
   const [eventType, setEventType] = React.useState<EventType>("none")
+  const [quoting, setQuoting] = React.useState(false)
 
   const busOptions = React.useMemo<MultiSelectOption[]>(() => {
     const uniq: Record<string, boolean> = {}
@@ -198,16 +201,55 @@ export default function AddEditReservationSheet({
       ? (form as any).distanceKm
       : undefined
 
+  // --- Automatic quoting (like the dialog) ---
+  const busesCount = Math.max(1, (busIds?.length ?? (editing?.busIds?.length ?? 0)) || 1)
+  React.useEffect(() => {
+    let cancel = false
+    const canQuote =
+      vehicleType &&
+      eventType !== undefined &&
+      Number.isFinite(distanceKm as number) &&
+      (distanceKm ?? 0) >= 0 &&
+      busesCount >= 1
+
+    if (!canQuote) return
+
+    const t = setTimeout(async () => {
+      setQuoting(true)
+      try {
+        const payload = {
+          vehicle_type: vehicleType,
+          distance_km: Number(distanceKm ?? 0),
+          event_type: eventType,
+          buses: busesCount,
+        }
+        const res = await api.post<QuoteResponse, typeof payload>("/quote", payload)
+        if (cancel) return
+        setField("priceTotal", res.data.client_payable as any)
+      } catch (e: any) {
+        if (!cancel) toast.error(e?.message ?? "Échec du calcul du tarif.")
+      } finally {
+        if (!cancel) setQuoting(false)
+      }
+    }, 400)
+
+    return () => {
+      cancel = true
+      clearTimeout(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleType, eventType, distanceKm, busesCount])
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
         className="
-          w-[min(100vw,1200px)]
-          sm:w-[860px]
-          md:w-[1020px]
-          lg:w-[1140px]
-          xl:w-[1200px]
+          w-[min(100vw,1400px)]
+          sm:w-[980px]
+          md:w-[1180px]
+          lg:w-[1320px]
+          xl:w-[1400px]
           p-0
           flex flex-col
         "
@@ -258,9 +300,9 @@ export default function AddEditReservationSheet({
             </>
           )}
 
-          {/* Grids */}
+          {/* Two-column core fields (no status or buses here) */}
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Booking left: trip/date/seat/status & distance */}
+            {/* Left column */}
             <div className="space-y-3">
               <h3 className="text-sm font-medium text-muted-foreground">Détails réservation</h3>
               <div className="grid gap-2">
@@ -287,29 +329,10 @@ export default function AddEditReservationSheet({
                     onChange={(e) => setField("seats", Number(e.target.value) as any)}
                   />
                 </div>
-
-                <div className="grid gap-1.5">
-                  <Label>Statut</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {["pending", "confirmed", "cancelled"].map((s) => (
-                      <Button
-                        key={s}
-                        type="button"
-                        variant={(form.status ?? editing?.status ?? "pending") === s ? "default" : "outline"}
-                        onClick={() => setField("status", s as any)}
-                        className="capitalize"
-                      >
-                        {s === "pending" && "En attente"}
-                        {s === "confirmed" && "Confirmée"}
-                        {s === "cancelled" && "Annulée"}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
 
-            {/* Booking right: vehicle/event/total + buses */}
+            {/* Right column */}
             <div className="space-y-3">
               <h3 className="text-sm font-medium text-muted-foreground">Véhicules & tarification</h3>
               <div className="grid gap-2">
@@ -341,28 +364,55 @@ export default function AddEditReservationSheet({
 
                 <div className="grid gap-1.5">
                   <Label>Total (FCFA)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.priceTotal ?? editing?.priceTotal ?? 0}
-                    onChange={(e) => setField("priceTotal", Number(e.target.value) as any)}
-                  />
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={form.priceTotal ?? editing?.priceTotal ?? 0}
+                      onChange={(e) => setField("priceTotal", Number(e.target.value) as any)}
+                      className="pr-16"
+                    />
+                    <div className="pointer-events-none absolute inset-y-0 right-0 grid w-16 place-items-center text-xs text-muted-foreground">
+                      {quoting ? "…calc" : "FCFA"}
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              <Separator className="my-2" />
-
-              <h3 className="text-sm font-medium text-muted-foreground">Affectation des bus</h3>
-              <MultiSelectBuses
-                value={busIds}
-                onChange={setBusIds}
-                options={busOptions}
-                placeholder="Sélectionner des bus"
-              />
-              <p className="text-xs text-muted-foreground">
-                Les bus proviennent de votre parc (libellés = plaques).
-              </p>
             </div>
+          </div>
+
+          {/* FULL-WIDTH: Status */}
+          <div className="mt-6">
+            <Label className="mb-2 block">Statut</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {["pending", "confirmed", "cancelled"].map((s) => (
+                <Button
+                  key={s}
+                  type="button"
+                  variant={(form.status ?? editing?.status ?? "pending") === s ? "default" : "outline"}
+                  onClick={() => setField("status", s as any)}
+                  className="capitalize"
+                >
+                  {s === "pending" && "En attente"}
+                  {s === "confirmed" && "Confirmée"}
+                  {s === "cancelled" && "Annulée"}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* FULL-WIDTH: Buses */}
+          <div className="mt-6">
+            <h3 className="text-sm font-medium text-muted-foreground">Affectation des bus</h3>
+            <MultiSelectBuses
+              value={busIds}
+              onChange={setBusIds}
+              options={busOptions}
+              placeholder="Sélectionner des bus"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Les bus proviennent de votre parc (libellés = plaques).
+            </p>
           </div>
 
           <Separator className="my-6" />
@@ -409,7 +459,7 @@ export default function AddEditReservationSheet({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
-          <Button onClick={handleSave}>Enregistrer</Button>
+          <Button onClick={handleSave} disabled={quoting}>Enregistrer</Button>
         </SheetFooter>
       </SheetContent>
     </Sheet>
