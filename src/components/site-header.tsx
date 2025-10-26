@@ -129,7 +129,7 @@ export function SiteHeader() {
             </li>
             <li>
               <NavLink
-                to="/reservations/map"
+                to="/map/reservations"
                 className={({ isActive }) =>
                   cn(
                     "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 transition-colors",

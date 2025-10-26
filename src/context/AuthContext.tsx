@@ -99,7 +99,7 @@ const logout = useCallback(async () => {
   } finally {
     setUser(null)
     setStatus("unauthenticated")
-    navigate("/login")
+    navigate("/auth/login")
   }
 }, [navigate])
 

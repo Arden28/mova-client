@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate, Outlet } from "react-router-dom"
 import AuthProvider from "@/context/AuthContext"
 import RequireAuth from "@/components/RequireAuth"
 import GuestOnly from "@/components/GuestOnly"
+import useAuth from "@/hooks/useAuth"
 
 import AppLayout from "@/layouts/AppLayout"
 import AuthLayout from "@/layouts/AuthLayout"
@@ -33,13 +34,22 @@ function Providers() {
   )
 }
 
+/** Admin-only route guard */
+function RequireAdmin() {
+  const { user, status } = useAuth()
+  if (status === "loading") return null
+  const role = (user?.role ?? "").toString().toLowerCase()
+  const isAdmin = role === "admin" || role === "superadmin"
+  return isAdmin ? <Outlet /> : <Navigate to="/overview" replace />
+}
+
 export const router = createBrowserRouter([
   {
     element: <Providers />,
     children: [
-      // Public/Auth
+      /* ---------------------- AUTH ROUTES ON /auth ---------------------- */
       {
-        path: "/",
+        path: "/auth",
         element: <AuthLayout />,
         children: [
           {
@@ -52,7 +62,7 @@ export const router = createBrowserRouter([
         ],
       },
 
-      // App (classic layout with sidebar)
+      /* ---------------------- APP ROUTES ON / (authenticated) ---------------------- */
       {
         path: "/",
         element: <AppLayout />,
@@ -60,35 +70,45 @@ export const router = createBrowserRouter([
           {
             element: <RequireAuth />,
             children: [
-              { index: true, element: withSuspense(<Overview />) }, // now "/" shows Overview directly
-              { path: "", element: withSuspense(<Overview />) },
+              // “/” shows Overview directly
+              { index: true, element: withSuspense(<Overview />) },
               { path: "overview", element: withSuspense(<Overview />) },
+
               { path: "reservations", element: withSuspense(<Reservations />) },
               { path: "buses", element: withSuspense(<Buses />) },
-              { path: "people", element: withSuspense(<People />) },
-              { path: "staff", element: withSuspense(<Staff />) },
               { path: "notifications", element: withSuspense(<Notifications />) },
-              { path: "settings", element: withSuspense(<Settings />) },
               { path: "account", element: withSuspense(<MyAccount />) },
+
+              // Admin-only: lock people, staff, settings
+              {
+                element: <RequireAdmin />,
+                children: [
+                  { path: "people", element: withSuspense(<People />) },
+                  { path: "staff", element: withSuspense(<Staff />) },
+                  { path: "settings", element: withSuspense(<Settings />) },
+                ],
+              },
             ],
           },
         ],
       },
 
-      // Map-first experiences (no AppLayout chrome)
+      /* ---------------------- MAP LAYOUT ON /map (no chrome) ---------------------- */
       {
-        path: "/",
-        element: <MapLayout />,                 
+        path: "/map",
+        element: <MapLayout />,
         children: [
           {
             element: <RequireAuth />,
             children: [
-              { path: "reservations/map", element: withSuspense(<ReservationsMapPage />) }, // stays at same URL
+              // URL becomes /map/reservations
+              { path: "reservations", element: withSuspense(<ReservationsMapPage />) },
             ],
           },
         ],
       },
 
+      /* ---------------------- FALLBACK ---------------------- */
       { path: "*", element: withSuspense(<NotFound />) },
     ],
   },
