@@ -61,6 +61,7 @@ export const router = createBrowserRouter([
             element: <RequireAuth />,
             children: [
               { index: true, element: withSuspense(<Overview />) }, // now "/" shows Overview directly
+              { path: "", element: withSuspense(<Overview />) },
               { path: "overview", element: withSuspense(<Overview />) },
               { path: "reservations", element: withSuspense(<Reservations />) },
               { path: "buses", element: withSuspense(<Buses />) },

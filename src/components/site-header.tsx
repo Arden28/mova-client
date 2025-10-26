@@ -144,7 +144,7 @@ export function SiteHeader() {
           <ul className="flex items-center gap-6">
             <li>
               <NavLink
-                to="/data"
+                to="/"
                 className={() =>
                   cn(
                     "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 transition-colors",
@@ -159,7 +159,7 @@ export function SiteHeader() {
             </li>
             <li>
               <NavLink
-                to="/locations"
+                to="/reservations/map"
                 className={({ isActive }) =>
                   cn(
                     "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 transition-colors",
