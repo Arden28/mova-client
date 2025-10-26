@@ -15,11 +15,6 @@ import { IconBell } from "@tabler/icons-react"
 import { Inbox, CheckCheck, Dot } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-/** If you already have shadcn's Empty component, you can use:
- * import { Empty } from "@/components/ui/empty"
- * and replace <EmptyState ... /> with <Empty ... />
- */
-
 type NotificationItem = {
   id: string
   title: string
@@ -50,15 +45,9 @@ function EmptyState({
 }
 
 export function SiteHeader() {
-  // Notifications (sample – replace with your store)
   const [notifications, setNotifications] = React.useState<NotificationItem[]>([])
   const unreadCount = notifications.filter((n) => n.unread).length
   const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))
-
-  // Sub headbar tabs (local state; swap with routing if you want)
-  const subTabs = ["Tous", "Récents", "Favoris"] as const
-  type SubTab = (typeof subTabs)[number]
-  const [activeSub, setActiveSub] = React.useState<SubTab>("Tous")
 
   return (
     <>
@@ -69,7 +58,7 @@ export function SiteHeader() {
           <SidebarTrigger className="-ml-1" />
         </div>
 
-        {/* Center: plain nav, underline when active (Airtable-like) */}
+        {/* Center: plain nav, underline primary when active */}
         <nav className="pointer-events-auto absolute left-1/2 -translate-x-1/2">
           <ul className="flex items-center gap-6">
             <li>
@@ -80,7 +69,7 @@ export function SiteHeader() {
                     "inline-flex items-center px-1.5 py-1 text-sm font-medium",
                     "text-muted-foreground hover:text-foreground transition-colors",
                     "border-b-2 border-transparent",
-                    isActive && "text-foreground border-primary"
+                    isActive && "text-primary border-primary"
                   )
                 }
               >
@@ -95,7 +84,7 @@ export function SiteHeader() {
                     "inline-flex items-center px-1.5 py-1 text-sm font-medium",
                     "text-muted-foreground hover:text-foreground transition-colors",
                     "border-b-2 border-transparent",
-                    isActive && "text-foreground border-primary"
+                    isActive && "text-primary border-primary"
                   )
                 }
               >
@@ -220,29 +209,51 @@ export function SiteHeader() {
         </div>
       </header>
 
-      {/* Secondary headbar (tabs on light primary) */}
-      <div className="z-30 border-b bg-primary/5">
-        <div className="mx-auto flex h-10 w-full max-w-screen-2xl items-center justify-center gap-1 px-4">
-          {subTabs.map((t) => {
-            const active = activeSub === t
-            return (
-              <button
-                key={t}
-                onClick={() => setActiveSub(t)}
-                className={cn(
-                  "px-3 py-1 text-sm rounded-md transition-colors",
-                  "hover:bg-primary/10 hover:text-primary",
-                  active
-                    ? "bg-primary/10 text-primary ring-1 ring-primary/20"
-                    : "text-muted-foreground"
-                )}
-              >
-                {t}
-              </button>
-            )
-          })}
+      {/* Secondary headbar (full width, links separated by |, no rounded/borders) */}
+      <div className="z-30 w-full border-b bg-primary/5">
+        <div className="mx-auto w-full max-w-screen-2xl px-4">
+          <div className="flex h-10 items-center justify-center overflow-x-auto whitespace-nowrap text-sm">
+            <NavItem to="/bus" label="Bus" />
+            <SeparatorPipe />
+            <NavItem to="/chauffeurs" label="Chauffeurs" />
+            <SeparatorPipe />
+            <NavItem to="/controleurs" label="Contrôleurs" />
+            <SeparatorPipe />
+            <NavItem to="/proprietaires" label="Propriétaires de bus" />
+            <SeparatorPipe />
+            <NavItem to="/clients" label="Clients" />
+            <SeparatorPipe />
+            <NavItem to="/activites" label="Activités" />
+            <SeparatorPipe />
+            <NavItem to="/locations" label="Locations" />
+            <SeparatorPipe />
+            <NavItem to="/staff" label="Staff" />
+          </div>
         </div>
       </div>
     </>
   )
+}
+
+/* --- Small helper components for the secondary headbar --- */
+
+function NavItem({ to, label }: { to: string; label: string }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        cn(
+          "px-2 py-1 text-muted-foreground hover:text-foreground transition-colors",
+          "border-b-2 border-transparent",
+          isActive && "text-primary border-primary"
+        )
+      }
+    >
+      {label}
+    </NavLink>
+  )
+}
+
+function SeparatorPipe() {
+  return <span className="px-2 text-muted-foreground/70" aria-hidden>|</span>
 }
