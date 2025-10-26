@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import type { ColumnDef } from "@tanstack/react-table"
-
 import { DataTable } from "@/components/data-table"
 import { makeDrawerTriggerColumn } from "@/components/data-table-helpers"
 import type { FilterConfig, GroupByConfig } from "@/components/data-table"
@@ -36,31 +35,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
 
 import staffApi, { type Staff, type StaffRole } from "@/api/staff"
 import { ApiError } from "@/api/apiService"
-
-function getInitials(name = "") {
-  const parts = name.trim().split(/\s+/).slice(0, 2)
-  return parts.map(p => p[0]?.toUpperCase() ?? "").join("") || "?"
-}
-
-async function fileToDataURL(file: File): Promise<string> {
-  if (!file.type.startsWith("image/")) throw new Error("Le fichier sélectionné n'est pas une image.")
-  const maxBytes = 4 * 1024 * 1024
-  if (file.size > maxBytes) throw new Error("Image trop volumineuse (4 Mo max).")
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(new Error("Impossible de lire l'image."))
-    reader.readAsDataURL(file)
-  })
-}
 
 function showValidationErrors(err: unknown) {
   const e = err as ApiError
@@ -88,7 +65,6 @@ type AddEditStaffDialogProps = {
 
 function AddEditStaffDialog({ open, onOpenChange, editing, onSubmit }: AddEditStaffDialogProps) {
   const [form, setForm] = React.useState<Partial<Staff & { password?: string }>>({})
-  const [uploading, setUploading] = React.useState(false)
 
   React.useEffect(() => {
     setForm(editing ?? { role: "agent" })
@@ -98,47 +74,21 @@ function AddEditStaffDialog({ open, onOpenChange, editing, onSubmit }: AddEditSt
     setForm((prev) => ({ ...prev, [key]: val }))
   }
 
-  async function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    try {
-      const dataUrl = await fileToDataURL(file)
-      set("avatar", dataUrl as any) // NOTE: data: URL won't pass Laravel's `url` rule; see submit guard below.
-      toast("Avatar ajouté (prévisualisation).")
-    } catch (err: any) {
-      toast(err?.message ?? "Échec du chargement de l'avatar.")
-    } finally {
-      setUploading(false)
-      e.target.value = ""
-    }
-  }
-
   function handleSubmit() {
     const payload: Staff & { password?: string } = {
       id: editing?.id ?? crypto.randomUUID(),
       role: (form.role as StaffRole) ?? "agent",
       name: String(form.name ?? "").trim(),
-      // phone is OPTIONAL (backend allows nullable)
       phone: form.phone ? String(form.phone).trim() : undefined,
       email: form.email ? String(form.email).trim() : undefined,
-      avatar: form.avatar ? String(form.avatar) : undefined,             // maps to avatar_url on API layer
-      licenseNo: form.licenseNo ? String(form.licenseNo) : undefined,    // maps to license_no on API layer
       createdAt: editing?.createdAt ?? undefined,
       status: editing?.status ?? undefined,
-      password: form.password ? String(form.password) : undefined,       // only used on create
+      password: form.password ? String(form.password) : undefined, // only used on create
     }
 
     if (!payload.name) {
       toast("Le nom est obligatoire.")
       return
-    }
-
-    // Guard: if avatar is a data URL, it will fail Laravel's `url` validator.
-    if (payload.avatar && payload.avatar.startsWith("data:")) {
-      toast.error("L’avatar doit être une URL publique (http/https). Le data: URL est seulement pour la prévisualisation.")
-      // Do not send avatar field in this case
-      delete (payload as any).avatar
     }
 
     onSubmit(payload)
@@ -150,40 +100,10 @@ function AddEditStaffDialog({ open, onOpenChange, editing, onSubmit }: AddEditSt
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{editing ? "Modifier le membre du staff" : "Ajouter un membre du staff"}</DialogTitle>
-          <DialogDescription>Renseignez l’identité, le rôle, les coordonnées et l’avatar.</DialogDescription>
+          <DialogDescription>Renseignez l’identité, le rôle et les coordonnées.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4">
-          {/* Avatar preview + uploader */}
-          <div className="flex items-center gap-4">
-            <Avatar className="h-14 w-14 ring-1 ring-slate-200">
-              <AvatarImage src={form.avatar || undefined} alt={String(form.name ?? "")} />
-              <AvatarFallback>{getInitials(String(form.name ?? ""))}</AvatarFallback>
-            </Avatar>
-            <div className="grid gap-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="avatar">Avatar (PNG/JPG, &lt; 4 Mo)</Label>
-                <div className="flex items-center gap-2">
-                  <Input id="avatar" type="file" accept="image/*" onChange={handleAvatarFile} disabled={uploading} className="max-w-xs" />
-                  {form.avatar && (
-                    <Button variant="outline" size="sm" onClick={() => set("avatar", undefined as any)}>
-                      Retirer
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="avatarUrl">Ou coller une URL d’image</Label>
-                <div className="flex gap-2">
-                  <Input id="avatarUrl" placeholder="https://…" value={form.avatar ?? undefined} onChange={(e) => set("avatar", e.target.value as any)} />
-                  <Button type="button" variant="secondary" size="sm" onClick={() => form.avatar && toast("URL d’avatar enregistrée.")}>
-                    Utiliser
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div className="grid gap-1.5">
             <Label>Nom</Label>
             <Input value={form.name ?? ""} onChange={(e) => set("name", e.target.value as any)} />
@@ -205,12 +125,6 @@ function AddEditStaffDialog({ open, onOpenChange, editing, onSubmit }: AddEditSt
                 <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          {/* License number (optionnel) */}
-          <div className="grid gap-1.5">
-            <Label>Numéro de licence (optionnel)</Label>
-            <Input value={form.licenseNo ?? ""} onChange={(e) => set("licenseNo", e.target.value as any)} />
           </div>
 
           {/* Password only on create (optionnel) */}
@@ -252,7 +166,6 @@ export default function StaffPage() {
     }
   }, [])
 
-  // initial fetch
   React.useEffect(() => {
     let alive = true
     ;(async () => {
@@ -285,10 +198,6 @@ export default function StaffPage() {
       triggerField: "name",
       renderTrigger: (s) => (
         <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9 ring-1 ring-slate-200">
-            <AvatarImage src={s.avatar || undefined} alt={s.name} />
-            <AvatarFallback>{getInitials(s.name)}</AvatarFallback>
-          </Avatar>
           <div className="min-w-0">
             <div className="truncate font-medium">{s.name}</div>
             <div className="text-xs text-muted-foreground truncate">{s.email ?? s.phone ?? "—"}</div>
@@ -297,10 +206,6 @@ export default function StaffPage() {
       ),
       renderTitle: (s) => (
         <div className="flex items-center gap-3">
-          <Avatar className="h-11 w-11 ring-1 ring-slate-200">
-            <AvatarImage src={s.avatar || undefined} alt={s.name} />
-            <AvatarFallback>{getInitials(s.name)}</AvatarFallback>
-          </Avatar>
           <span>{s.name}</span>
         </div>
       ),
@@ -333,8 +238,6 @@ export default function StaffPage() {
     },
   ], [])
 
-  /* --------------------------- Row action handlers -------------------------- */
-
   function renderRowActions(s: Staff) {
     return (
       <>
@@ -345,14 +248,13 @@ export default function StaffPage() {
         <DropdownMenuItem
           className="text-rose-600"
           onClick={async () => {
-            // optimistic delete (works as you reported)
             const prev = rows
             setRows((r) => r.filter(x => x.id !== s.id))
             try {
               await staffApi.remove(s.id)
               toast("Membre supprimé.")
             } catch (e: any) {
-              setRows(prev) // rollback
+              setRows(prev)
               showValidationErrors(e)
             }
           }}
@@ -363,7 +265,6 @@ export default function StaffPage() {
     )
   }
   
-  
   const groupBy: GroupByConfig<Staff>[] = [
     {
       id: "role",
@@ -372,8 +273,6 @@ export default function StaffPage() {
     },
   ]
   
-    
-  // getRowId (typed id param if you use it elsewhere)
   const getRowId = (r: Staff) => String(r.id)
 
   return (
@@ -382,7 +281,7 @@ export default function StaffPage() {
         <div>
           <h1 className="text-xl font-semibold">Équipe</h1>
           <p className="text-sm text-muted-foreground">
-            Gestion des agents et administrateurs : accès, coordonnées, avatars.
+            Gestion des agents et administrateurs : accès et coordonnées.
           </p>
         </div>
       </div>
@@ -399,7 +298,6 @@ export default function StaffPage() {
         onImport={() => setOpenImport(true)}
         importLabel="Importer"
         renderRowActions={renderRowActions}
-        // drawer={{ triggerField: "name" }}
         groupBy={groupBy}
         initialView="list"
         pageSizeOptions={[10, 20, 50]}
@@ -423,12 +321,10 @@ export default function StaffPage() {
         editing={editing}
         onSubmit={async (staff) => {
           if (editing) {
-            // optimistic update
             const prev = rows
             setRows((r) => r.map(x => x.id === staff.id ? { ...x, ...staff } : x))
             try {
               await staffApi.update(staff.id, staff)
-              // ✅ Refresh from server to ensure we show canonical fields (avatar_url etc.)
               await reload()
               toast("Membre mis à jour.")
             } catch (e: any) {
@@ -438,13 +334,11 @@ export default function StaffPage() {
               setEditing(null)
             }
           } else {
-            // optimistic add (temp id until API returns real one)
             const tempId = staff.id
             const tempRow = { ...staff }
             setRows((r) => [tempRow, ...r])
             try {
               await staffApi.create(staff)
-              // ✅ Refresh list to replace temp row with server row
               await reload()
               toast("Membre ajouté.")
             } catch (e: any) {
@@ -459,16 +353,14 @@ export default function StaffPage() {
         open={openImport}
         onOpenChange={setOpenImport}
         title="Importer le staff"
-        description="Chargez un CSV/Excel, mappez les colonnes (avatar facultatif), puis validez l'import."
+        description="Chargez un CSV/Excel, mappez les colonnes, puis validez l'import."
         fields={[
           { key: "name", label: "Nom", required: true },
           { key: "role", label: "Rôle", required: true },
-          { key: "phone", label: "Téléphone" },                // optional now
+          { key: "phone", label: "Téléphone" },
           { key: "email", label: "Email" },
-          { key: "licenseNo", label: "Numéro de licence" },    // optional
-          { key: "avatar", label: "Avatar (URL ou data:…)" },
         ]}
-        sampleHeaders={["name", "role", "phone", "email", "license_no", "avatar"]}
+        sampleHeaders={["name", "role", "phone", "email"]}
         transform={(raw) => {
           const norm = (v: string | undefined) => (typeof v === "string" ? v.trim() : v)
           const name = String(norm(raw.name) ?? "")
@@ -479,8 +371,6 @@ export default function StaffPage() {
 
           const phone = norm(raw.phone) || undefined
           const email = norm(raw.email) || undefined
-          const licenseNo = (norm((raw as any).license_no) ?? norm((raw as any).licenseNo)) || undefined
-          const avatar = norm(raw.avatar) || undefined
 
           const staff: Staff = {
             id: crypto.randomUUID(),
@@ -488,20 +378,17 @@ export default function StaffPage() {
             name,
             phone,
             email: email ? String(email) : undefined,
-            licenseNo: licenseNo ? String(licenseNo) : undefined,
-            avatar: avatar ? String(avatar) : undefined,
             createdAt: undefined,
             status: "active",
           }
           return staff
         }}
         onConfirm={async (imported) => {
-          // Optimistic batch create — sequential API calls
           const prev = rows
           setRows((r) => [...imported, ...r])
           try {
             await Promise.all(imported.map(s => staffApi.create(s)))
-            await reload() // ✅ show canonical server rows (ids, avatar urls, etc.)
+            await reload()
             toast(`Import réussi (${imported.length} membre${imported.length > 1 ? "s" : ""}).`)
           } catch (e: any) {
             setRows(prev)
