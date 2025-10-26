@@ -10,7 +10,8 @@ import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdow
 
 import type { ColumnDef } from "@tanstack/react-table"
 import { DataTable } from "@/components/data-table"
-import type { FilterConfig } from "@/components/data-table"
+import { makeDrawerTriggerColumn } from "@/components/data-table-helpers"
+import type { FilterConfig, GroupByConfig  } from "@/components/data-table"
 
 import ImportDialog from "@/components/common/ImportDialog"
 import AddEditReservationDialog from "@/components/reservation/AddEditReservation"
@@ -21,7 +22,6 @@ import busApi, { type UIBus } from "@/api/bus"
 import { Button } from "@/components/ui/button"
 import { Link } from "react-router-dom"
 import { MapIcon } from "lucide-react"
-import { makeDrawerTriggerColumn } from "@/components/data-table-helpers"
 
 /* ------------------------------- utilities -------------------------------- */
 
@@ -249,6 +249,15 @@ export default function ReservationPage() {
     ]
   }, [busPlateById])
 
+  
+  const groupBy: GroupByConfig<UIReservation>[] = [
+    {
+      id: "date",
+      label: "Check-in date",
+      accessor: (r: UIReservation) => r.passenger?.name ?? "—",
+    },
+  ]
+
   /* --------------------------- Row action handlers -------------------------- */
 
   function renderRowActions(r: UIReservation) {
@@ -301,6 +310,10 @@ export default function ReservationPage() {
     )
   }
 
+  
+  // getRowId (typed id param if you use it elsewhere)
+  const getRowId = (r: UIReservation) => String(r.id)
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -322,7 +335,7 @@ export default function ReservationPage() {
         data={rows}
         columns={columns}
         getRowId={(r) => r.id}
-        searchable={searchable}
+        searchable={{ placeholder: "Rechercher code, passager, téléphone, départ, arrivée…", fields: ["code"] }}
         filters={filters}
         loading={loading}
         onAdd={() => { setEditing(null); setOpen(true) }}
@@ -330,7 +343,10 @@ export default function ReservationPage() {
         onImport={() => setOpenImport(true)}
         importLabel="Importer"
         renderRowActions={renderRowActions}
+        groupBy={groupBy}
+        initialView="list"
         // drawer={{ triggerField: "code" }}
+        pageSizeOptions={[10, 20, 50]}
         onDeleteSelected={async (selected) => {
           if (selected.length === 0) return
           const prev = rows

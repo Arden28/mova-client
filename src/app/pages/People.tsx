@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import type { ColumnDef } from "@tanstack/react-table"
-import { DataTable, makeDrawerTriggerColumn } from "@/components/data-table"
+import { DataTable } from "@/components/data-table"
+import { makeDrawerTriggerColumn } from "@/components/data-table-helpers"
 import type { FilterConfig } from "@/components/data-table"
 
 import ImportDialog from "@/components/common/ImportDialog"
@@ -403,7 +404,7 @@ export default function PeoplePage() {
         onImport={() => setOpenImport(true)}
         importLabel="Importer"
         renderRowActions={renderRowActions}
-        drawer={{ triggerField: "name" }}
+        // drawer={{ triggerField: "name" }}
         onDeleteSelected={async (selected) => {
           if (selected.length === 0) return
           const prev = rows
