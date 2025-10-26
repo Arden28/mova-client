@@ -95,18 +95,20 @@ function TabLink({
 function ResponsiveHeadbar() {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const dropdownMeasureRef = React.useRef<HTMLButtonElement | null>(null)
+
+  // Keep refs for each tab to measure width (with borders applied)
   const itemRefs = React.useRef<(HTMLAnchorElement | null)[]>([])
   itemRefs.current = []
 
-  const [visibleCount, setVisibleCount] = React.useState(TABS.length)
-  const [hasOverflow, setHasOverflow] = React.useState(false)
+  const [visibleCount, setVisibleCount] = React.useState<number>(TABS.length)
 
   const measure = React.useCallback(() => {
     const container = containerRef.current
     if (!container) return
 
     const available = container.clientWidth
-    const ddW = dropdownMeasureRef.current?.offsetWidth ?? 64
+    const ddW = dropdownMeasureRef.current?.offsetWidth ?? 64 // reserve for "Plus" when needed
+
     let used = 0
     let count = 0
 
@@ -114,9 +116,11 @@ function ResponsiveHeadbar() {
       const el = itemRefs.current[i]
       if (!el) continue
       const w = el.offsetWidth
+
       const remaining = TABS.length - (i + 1)
       const needsDropdown = remaining > 0
       const nextUsed = used + w + (needsDropdown ? ddW : 0)
+
       if (nextUsed <= available) {
         used += w
         count++
@@ -125,28 +129,20 @@ function ResponsiveHeadbar() {
       }
     }
 
-    if (count === 0) count = 1
+    if (count === 0) count = 1 // always show at least one tab
     setVisibleCount(count)
-    setHasOverflow(count < TABS.length)
   }, [])
 
   React.useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    let timeout: NodeJS.Timeout | null = null
-    const observer = new ResizeObserver(() => {
-      if (timeout) clearTimeout(timeout)
-      timeout = setTimeout(measure, 150)
-    })
-    observer.observe(container)
+    if (!containerRef.current) return
+    const ro = new ResizeObserver(() => measure())
+    ro.observe(containerRef.current)
     window.addEventListener("resize", measure)
-    measure()
-
+    const t = setTimeout(measure, 0)
     return () => {
-      if (timeout) clearTimeout(timeout)
-      observer.disconnect()
+      ro.disconnect()
       window.removeEventListener("resize", measure)
+      clearTimeout(t)
     }
   }, [measure])
 
@@ -155,6 +151,25 @@ function ResponsiveHeadbar() {
 
   return (
     <div className="z-30 w-full border-b bg-primary/5">
+      {/* measuring (hidden) */}
+      <div className="absolute -z-10 -mt-[9999px] opacity-0 pointer-events-none">
+        <div className="flex h-10 items-stretch gap-0 px-4 text-sm">
+          <Button ref={dropdownMeasureRef} variant="ghost" size="sm" className="h-10 px-3 rounded-none">
+            Plus <ChevronDown className="ml-1 h-4 w-4" />
+          </Button>
+          {TABS.map((t, i) => (
+            <TabLink
+              key={`m-${t.to}`}
+              to={t.to}
+              label={t.label}
+              hasLeftBorder={i > 0}
+              innerRef={() => {}}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* visible row */}
       <div ref={containerRef} className="w-full">
         <div className="flex h-10 items-stretch gap-0 px-4 text-sm">
           {visible.map((t, i) => (
@@ -163,19 +178,23 @@ function ResponsiveHeadbar() {
               to={t.to}
               label={t.label}
               hasLeftBorder={i > 0}
-              innerRef={(el) => (itemRefs.current[i] = el)}
+              innerRef={(el) => {
+                itemRefs.current[i] = el
+              }}
             />
           ))}
 
-          {/* “Plus” only appears if overflow is true */}
-          {hasOverflow && (
+          {/* Overflow dropdown */}
+          {overflow.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-10 px-3 rounded-none hover:bg-muted/60 border-l border-border"
+                    "h-10 px-3 rounded-none hover:bg-muted/60",
+                    // left divider to replace separator
+                    (visible.length > 0) && "border-l border-border"
                   )}
                   ref={dropdownMeasureRef}
                 >
@@ -198,7 +217,6 @@ function ResponsiveHeadbar() {
     </div>
   )
 }
-
 
 /* --------------------------------- Header --------------------------------- */
 
