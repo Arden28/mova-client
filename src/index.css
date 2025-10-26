@@ -120,12 +120,3 @@
   }
 }
 
-/* Full width across the viewport, ignoring parent padding/max-width */
-.full-bleed {
-  width: 100vw;
-  position: relative;
-  left: 50%;
-  right: 50%;
-  margin-left: -50vw;
-  margin-right: -50vw;
-}
