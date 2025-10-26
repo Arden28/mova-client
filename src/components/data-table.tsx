@@ -2,7 +2,7 @@
 "use client"
 
 import * as React from "react"
-import type { ColumnDef, SortingState } from "@tanstack/react-table"
+import type { ColumnDef, SortingState, Column } from "@tanstack/react-table"
 import {
   flexRender,
   getCoreRowModel,
@@ -31,15 +31,6 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
 
 import {
   AlertDialog,
@@ -56,13 +47,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
-
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+
 import {
   Select,
   SelectContent,
@@ -70,6 +58,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+
 import {
   Table,
   TableBody,
@@ -78,11 +67,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { cn } from "@/lib/utils"
 
-/* -------------------------------------------------------------------------- */
-/*                                  Types                                     */
-/* -------------------------------------------------------------------------- */
+import { cn } from "@/lib/utils"
 
 export type FilterConfig<T> = {
   id: string
@@ -96,7 +82,6 @@ export type GroupByConfig<T> = {
   id: string
   label: string
   accessor: (row: T) => string
-  // Optional sort function for group labels
   sortGroups?: (a: string, b: string) => number
 }
 
@@ -130,21 +115,43 @@ export type DataTableProps<T extends object> = {
   importLabel?: string
   pageSizeOptions?: number[]
   renderRowActions?: (row: T) => React.ReactNode
-  drawer?: DrawerConfig<T>
   /** bulk delete handler; called after user confirms */
   onDeleteSelected?: (rows: T[]) => void
   loading?: boolean
 }
 
+/* -------------------------- Safe label/value helpers ------------------------- */
+/** Never call flexRender with fake contexts in grid mode. */
+function columnLabel<T>(col: Column<T, unknown>) {
+  const def: any = col.columnDef
+  if (typeof def.header === "string") return def.header
+  if (def?.meta?.label) return String(def.meta.label)
+  return String(col.id)
+}
+
+function columnValue<T>(col: Column<T, unknown>, row: T) {
+  const def: any = col.columnDef
+  if (typeof def.accessorFn === "function") {
+    try {
+      return def.accessorFn(row, 0)
+    } catch {
+      // ignore
+    }
+  }
+  if (def.accessorKey) {
+    return (row as any)[String(def.accessorKey)]
+  }
+  return (row as any)[String(col.id)]
+}
+
 /* -------------------------------------------------------------------------- */
-/*                             Main DataTable                                  */
+/*                               Main component                               */
 /* -------------------------------------------------------------------------- */
 
 export function DataTable<T extends object>({
   data: externalData,
   columns,
   getRowId,
-  // drag (ignored),
   searchable,
   filters,
   groupBy,
@@ -156,7 +163,6 @@ export function DataTable<T extends object>({
   importLabel = "Import",
   pageSizeOptions = [10, 20, 30, 40, 50],
   renderRowActions,
-  // drawer,
   onDeleteSelected,
 }: DataTableProps<T>) {
   const ALL_TOKEN = "__ALL__" // Radix Select can't use empty string
@@ -177,28 +183,23 @@ export function DataTable<T extends object>({
   const [searchInput, setSearchInput] = React.useState("")
   const [search, setSearch] = React.useState("")
   const searchInputRef = React.useRef<HTMLInputElement | null>(null)
-  const lastTypeTs = React.useRef(0)
 
-  // Debounce
   React.useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 180)
     return () => clearTimeout(t)
   }, [searchInput])
 
-  // Preserve focus & caret reliably
   function focusSearchSafely() {
     const el = searchInputRef.current
     if (!el) return
     requestAnimationFrame(() => {
       el.focus({ preventScroll: true })
-      // Keep caret at end when toggling open
       try {
         const len = el.value.length
         el.setSelectionRange(len, len)
       } catch {}
     })
   }
-
   React.useEffect(() => {
     if (searchOpen) focusSearchSafely()
   }, [searchOpen])
@@ -293,7 +294,6 @@ export function DataTable<T extends object>({
     }
     const keys = Object.keys(map)
     keys.sort(currentGroup.sortGroups ?? ((a, b) => a.localeCompare(b)))
-    // Return in sorted key order
     return keys.reduce((acc, k) => (acc[k] = map[k], acc), {} as Record<string, T[]>)
   }, [filteredRows, currentGroup])
 
@@ -377,7 +377,7 @@ export function DataTable<T extends object>({
     getSortedRowModel: getSortedRowModel(),
   })
 
-  /* ------------------------------ Toolbar (new) ------------------------------ */
+  /* ------------------------------ Toolbar (UI) ------------------------------ */
 
   function ActiveFilterChips() {
     const entries = Object.entries(filterSelections).filter(([, v]) => v && v !== ALL_TOKEN)
@@ -478,7 +478,7 @@ export function DataTable<T extends object>({
             <ActiveFilterChips />
           </div>
 
-          {/* CENTER (auto): Search Icon → Expanding Input */}
+          {/* CENTER: Search Icon → Expanding Input */}
           {searchable && (
             <div className="mx-auto flex items-center">
               <div
@@ -486,10 +486,7 @@ export function DataTable<T extends object>({
                   "flex items-center rounded-md border bg-background transition-all",
                   searchOpen ? "pr-2" : "border-transparent"
                 )}
-                onMouseDown={(e) => {
-                  // Prevent losing focus when clicking inside wrapper
-                  e.preventDefault()
-                }}
+                onMouseDown={(e) => e.preventDefault()}
               >
                 <Button
                   type="button"
@@ -503,16 +500,12 @@ export function DataTable<T extends object>({
                 <Input
                   ref={searchInputRef}
                   className={cn(
-                    "border-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-all",
-                    "placeholder:text-sm",
+                    "border-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-all placeholder:text-sm",
                     searchOpen ? "w-40 sm:w-64 lg:w-80 opacity-100" : "w-0 p-0 opacity-0"
                   )}
                   placeholder={searchable.placeholder ?? "Search..."}
                   value={searchInput}
-                  onChange={(e) => {
-                    lastTypeTs.current = Date.now()
-                    setSearchInput(e.target.value)
-                  }}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   onFocus={() => setSearchOpen(true)}
                 />
                 {searchOpen && searchInput && (
@@ -589,69 +582,38 @@ export function DataTable<T extends object>({
     )
   }
 
-  /* ------------------------------ List rendering ----------------------------- */
-
-  function ListViewRows({ rows }: { rows: T[] }) {
-    // Render as your existing table body
-    return (
-      <>
-        {rows.length ? (
-          rows.map((row) => (
-            <TableRow
-              key={(row as any).id ?? JSON.stringify(row)}
-              data-state={
-                // Best-effort sync selection by rowId used by table
-                // We can't cheaply map T->Row here, table row model is elsewhere.
-                undefined
-              }
-            >
-              {/* We render via table row model below to keep sorting/paging intact */}
-            </TableRow>
-          ))
-        ) : (
-          <TableRow>
-            <TableCell colSpan={composedColumns.length} className="h-24 text-center">
-              No results.
-            </TableCell>
-          </TableRow>
-        )}
-      </>
-    )
-  }
-
   /* ------------------------------ Grid rendering ----------------------------- */
 
   function AutoCard({ row }: { row: any }) {
-    // Build from visible columns (skip _select/_actions)
+    // Build from leaf, visible columns (skip _select/_actions) WITHOUT flexRender
     const visibleCols = table
-      .getAllColumns()
-      .filter((c) => c.getIsVisible() && !["_select", "_actions"].includes(c.id))
+      .getAllLeafColumns()
+      .filter((c) => c.getIsVisible() && !["_select", "_actions"].includes(c.id)) as Column<any, unknown>[]
 
     return (
       <div className="rounded-lg border p-3 hover:shadow-sm transition-shadow">
-        <div className="space-y-1">
+        <div className="space-y-2">
           {visibleCols.map((col) => {
-            const ctx = {
-              table,
-              row: { original: row } as any,
-              getValue: () => (row as any)[String(col.id)] ?? "",
-              column: col,
-              cell: null as any,
-            }
+            const label = columnLabel(col)
+            const value = columnValue(col, row)
+
             return (
               <div key={col.id} className="grid grid-cols-3 gap-2 text-sm">
-                <div className="col-span-1 text-muted-foreground">
-                  {typeof col.columnDef.header === "string"
-                    ? col.columnDef.header
-                    : (col.columnDef.header as any)({ column: col })}
-                </div>
+                <div className="col-span-1 text-muted-foreground">{label}</div>
                 <div className="col-span-2 font-medium truncate">
-                  {flexRender(col.columnDef.cell ?? col.columnDef.header, ctx)}
+                  {React.isValidElement(value)
+                    ? value
+                    : typeof value === "string" || typeof value === "number"
+                    ? String(value)
+                    : value == null
+                    ? "—"
+                    : JSON.stringify(value)}
                 </div>
               </div>
             )
           })}
         </div>
+
         {renderRowActions && (
           <div className="mt-2">
             <DropdownMenu>
@@ -675,7 +637,9 @@ export function DataTable<T extends object>({
       <section className="w-full">
         {title ? (
           <div className="sticky top-[52px] z-10 -mx-1 mb-2 bg-background/60 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/40">
-            <div className="text-sm font-semibold">{title}</div>
+            <div className="text-sm font-semibold">
+              {title} <span className="text-muted-foreground">({rows.length})</span>
+            </div>
           </div>
         ) : null}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -727,7 +691,7 @@ export function DataTable<T extends object>({
                     )
                   }
 
-                  // If grouped, render group headers + rows from the table row model order
+                  // If grouped, render group headers + rows
                   if (currentGroup && grouped) {
                     return Object.entries(grouped).map(([label, groupRows]) => (
                       <React.Fragment key={label}>
@@ -737,9 +701,9 @@ export function DataTable<T extends object>({
                           </TableCell>
                         </TableRow>
                         {groupRows.map((gr, idx) => {
-                          // Find matching row in table model by rowId
                           const id = getRowId?.(gr, idx) ?? String(filteredRows.indexOf(gr))
-                          const tableRow = rows.find((r) => r.id === id) ?? rows.find((r) => r.original === gr)
+                          const tableRow =
+                            rows.find((r) => r.id === id) ?? rows.find((r) => r.original === gr)
                           if (!tableRow) return null
                           return (
                             <TableRow
@@ -888,49 +852,4 @@ export function DataTable<T extends object>({
       </AlertDialog>
     </div>
   )
-}
-
-/* -------------------------------------------------------------------------- */
-/*                         Helper cell factories (opt)                         */
-/* -------------------------------------------------------------------------- */
-
-export function makeDrawerTriggerColumn<T>(
-  field: keyof T,
-  drawer: DrawerConfig<T>
-): ColumnDef<T> {
-  return {
-    id: String(field),
-    header: String(field),
-    cell: ({ row }) => (
-      <Drawer>
-        <DrawerTrigger asChild>
-          <Button variant="link" className="text-foreground w-fit px-0 text-left">
-            {drawer.renderTrigger
-              ? drawer.renderTrigger(row.original)
-              : String(row.original[field] ?? "")}
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent>
-          <DrawerHeader className="gap-1">
-            <DrawerTitle>
-              {drawer.renderTitle
-                ? drawer.renderTitle(row.original)
-                : String(row.original[field] ?? "")}
-            </DrawerTitle>
-          </DrawerHeader>
-          {drawer.renderBody && <div className="px-4 py-2">{drawer.renderBody(row.original)}</div>}
-          <DrawerFooter>
-            {drawer.renderFooter ? (
-              drawer.renderFooter(row.original)
-            ) : (
-              <DrawerClose asChild>
-                <Button variant="outline">Close</Button>
-              </DrawerClose>
-            )}
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
-    ),
-    enableHiding: false,
-  }
 }
