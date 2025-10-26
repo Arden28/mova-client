@@ -11,7 +11,7 @@ import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdow
 import type { ColumnDef } from "@tanstack/react-table"
 import { DataTable } from "@/components/data-table"
 import { makeDrawerTriggerColumn } from "@/components/data-table-helpers"
-import type { FilterConfig, GroupByConfig  } from "@/components/data-table"
+import type { FilterConfig, GroupByConfig } from "@/components/data-table"
 
 import ImportDialog from "@/components/common/ImportDialog"
 import AddEditReservationDialog from "@/components/reservation/AddEditReservation"
@@ -59,29 +59,27 @@ export default function ReservationPage() {
   // Buses from API (for plates + dialog options)
   const [buses, setBuses] = React.useState<UIBus[]>([])
 
-  // On mount: fetch reservations + buses
-  React.useEffect(() => {
-    let alive = true
-    ;(async () => {
-      try {
-        setLoading(true)
-        const [resvRes, busRes] = await Promise.all([
-          reservationApi.list({ with: ["buses"], per_page: 100 }), // tune per_page if needed
-          busApi.list({ per_page: 500 }),
-        ])
-        if (!alive) return
-        setRows(resvRes.data.rows)
-        setBuses(busRes.data.rows)
-      } catch (e: any) {
-        toast.error(e?.message ?? "Échec du chargement des réservations.")
-      } finally {
-        if (alive) setLoading(false)
-      }
-    })()
-    return () => {
-      alive = false
+  // Shared fetcher so we can refresh after add/edit/etc.
+  const reload = React.useCallback(async () => {
+    try {
+      setLoading(true)
+      const [resvRes, busRes] = await Promise.all([
+        reservationApi.list({ with: ["buses"], per_page: 100 }),
+        busApi.list({ per_page: 500 }),
+      ])
+      setRows(resvRes.data.rows)
+      setBuses(busRes.data.rows)
+    } catch (e: any) {
+      toast.error(e?.message ?? "Échec du chargement des réservations.")
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  // On mount: initial load
+  React.useEffect(() => {
+    reload()
+  }, [reload])
 
   // Map busId -> plate label
   const busPlateById = React.useMemo(() => {
@@ -249,7 +247,6 @@ export default function ReservationPage() {
     ]
   }, [busPlateById])
 
-  
   const groupBy: GroupByConfig<UIReservation>[] = [
     {
       id: "client",
@@ -277,6 +274,7 @@ export default function ReservationPage() {
               try {
                 await reservationApi.setStatus(r.id, "cancelled")
                 toast("Réservation annulée")
+                await reload()
               } catch (e: any) {
                 setRows(prev)
                 toast.error(e?.message ?? "Échec de l’annulation.")
@@ -298,6 +296,7 @@ export default function ReservationPage() {
             try {
               await reservationApi.remove(r.id)
               toast("Réservation supprimée")
+              await reload()
             } catch (e: any) {
               setRows(prev)
               toast.error(e?.message ?? "Échec de la suppression.")
@@ -309,7 +308,7 @@ export default function ReservationPage() {
       </>
     )
   }
-  
+
   // getRowId (typed id param if you use it elsewhere)
   const getRowId = (r: UIReservation) => String(r.id)
 
@@ -352,6 +351,7 @@ export default function ReservationPage() {
           setRows((xs) => xs.filter((x) => !selected.some((s) => s.id === x.id)))
           try {
             await Promise.all(selected.map((s) => reservationApi.remove(s.id)))
+            await reload()
             toast(`${selected.length} réservation(s) supprimée(s).`)
           } catch (e: any) {
             setRows(prev)
@@ -374,6 +374,7 @@ export default function ReservationPage() {
               // server is source of truth (may compute fields)
               setRows((xs) => xs.map((x) => (x.id === res.id ? apiRes.data : x)))
               toast("Réservation mise à jour.")
+              await reload() // hard refresh to pick up related data/aggregates
             } catch (e: any) {
               setRows(prev)
               toast.error(e?.message ?? "Échec de la mise à jour.")
@@ -390,6 +391,7 @@ export default function ReservationPage() {
               // swap temp by server row
               setRows((xs) => xs.map((x) => (x.id === tempId ? apiRes.data : x)))
               toast("Réservation ajoutée.")
+              await reload() // ensure joins/computed fields are fresh
             } catch (e: any) {
               setRows((xs) => xs.filter((x) => x.id !== tempId))
               toast.error(e?.message ?? "Échec de la création.")
@@ -473,6 +475,7 @@ export default function ReservationPage() {
               const withoutTemps = xs.filter((x) => !imported.some((t) => key(t) === key(x)))
               return [...created, ...withoutTemps]
             })
+            await reload()
             toast.success(`Import réussi (${created.length} réservation${created.length > 1 ? "s" : ""}).`)
           } catch (e: any) {
             setRows(prev)
