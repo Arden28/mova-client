@@ -63,15 +63,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar
-      // Keep the original off-canvas behavior on mobile so the trigger can open it
       collapsible="offcanvas"
-      className={cn(
-        // fixed, compact rail width on desktop
-        "w-[68px] data-[state=expanded]:w-[68px] data-[state=collapsed]:w-[68px]",
-        // ensure full height and proper border
-        "border-r h-screen sticky top-0"
-      )}
-      {...props}
+      className="w-[68px] border-r h-screen sticky top-0"
     >
       {/* Top: Logo only (no text) */}
       <SidebarHeader className="p-2">

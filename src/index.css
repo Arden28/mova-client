@@ -120,3 +120,8 @@
   }
 }
 
+.pl-\[\-\-sidebar-width\],
+.md\:pl-\[\-\-sidebar-width\],
+.lg\:pl-\[\-\-sidebar-width\] {
+  padding-left: 0 !important;
+}
