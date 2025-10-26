@@ -48,12 +48,9 @@ function EmptyState({
 /* ----------------------------- Tabs (data) ----------------------------- */
 
 const TABS = [
-  { to: "/bus", label: "Bus" },
-  { to: "/chauffeurs", label: "Chauffeurs" },
-  { to: "/controleurs", label: "Contrôleurs" },
-  { to: "/proprietaires", label: "Propriétaires de bus" },
-  { to: "/clients", label: "Clients" },
-  { to: "/locations", label: "Locations" },
+  { to: "/buses", label: "Bus" },
+  { to: "/people", label: "Chauffeurs & Propriétaires" },
+  { to: "/reservations", label: "Locations" },
   { to: "/staff", label: "Staff" },
 ] as const
 
