@@ -252,8 +252,8 @@ export default function ReservationPage() {
   
   const groupBy: GroupByConfig<UIReservation>[] = [
     {
-      id: "date",
-      label: "Check-in date",
+      id: "client",
+      label: "Clients",
       accessor: (r: UIReservation) => r.passenger?.name ?? "—",
     },
   ]

@@ -84,6 +84,30 @@ export default function AddEditBusDialog({
   const owners = React.useMemo(() => people.filter((p) => p.role === "owner"), [people])
   const drivers = React.useMemo(() => people.filter((p) => p.role === "driver"), [people])
 
+  // Fallback labels (when selected id isn't present in people[] yet)
+  const fallbackPersonLabels = React.useMemo(() => {
+    const map = new Map<string, string>()
+    if (editing?.operatorId && editing.operatorName) {
+      map.set(String(editing.operatorId), editing.operatorName)
+    }
+    if (editing?.assignedDriverId && editing.driverName) {
+      map.set(String(editing.assignedDriverId), editing.driverName)
+    }
+    return map
+  }, [editing?.operatorId, editing?.operatorName, editing?.assignedDriverId, editing?.driverName])
+
+  // Label resolver: prefer people[], then fallbacks; if nothing, return undefined (so we don't show an opaque id)
+  const getPersonLabel = React.useCallback(
+    (id: Id | ""): string | undefined => {
+      if (!id) return undefined
+      const found = people.find((p) => p.id === id)
+      if (found) return `${found.name}${found.phone ? ` - ${found.phone}` : ""}`
+      const fb = fallbackPersonLabels.get(String(id))
+      return fb || undefined
+    },
+    [people, fallbackPersonLabels]
+  )
+
   // Hydratation en édition
   React.useEffect(() => {
     if (editing) {
@@ -159,12 +183,9 @@ export default function AddEditBusDialog({
       model: model.trim() || undefined,
       year: year === "" ? undefined : Number(year),
       mileageKm: mileageKm === "" ? undefined : Number(mileageKm),
-      // IDs must be numbers for the backend exists() rule; we convert here so the api layer can pass numbers through
       operatorId: asStringOrUndefined(operatorId),
       assignedDriverId: asStringOrUndefined(assignedDriverId),
-      // Dates must be ISO or omitted
       lastServiceDate: lastServiceDate && isIsoDate(lastServiceDate) ? lastServiceDate : undefined,
-      // Insurance (flat fields in API)
       ...(hasInsurance &&
       (insProvider.trim() || insPolicy.trim() || insValidUntil.trim())
         ? {
@@ -206,18 +227,33 @@ export default function AddEditBusDialog({
     emptyText = "Aucun résultat",
     getLabel,
     className,
+    includeCurrentValue, // if true, inject current value into the list (with label resolver) when not present
   }: {
     value: T | ""
     onChange: (v: T | "") => void
     options: readonly T[]
     placeholder: string
     emptyText?: string
-    getLabel?: (v: T) => string
+    getLabel?: (v: T) => string | undefined
     className?: string
+    includeCurrentValue?: boolean
   }) {
     const [open, setOpen] = React.useState(false)
+
+    // Important: DO NOT show opaque IDs in the trigger.
+    // If we can't resolve a label, show placeholder instead of String(value).
     const selectedLabel =
-      (value !== "" && (getLabel ? getLabel(value as T) : String(value))) || ""
+      value !== "" ? (getLabel ? getLabel(value as T) : String(value)) : ""
+
+    // Prepare list options; optionally inject the current value at top if missing
+    const preparedOptions = React.useMemo(() => {
+      const set = new Set(options.map((o) => String(o)))
+      const arr: T[] = [...options] as T[]
+      if (includeCurrentValue && value !== "" && !set.has(String(value))) {
+        arr.unshift(value as T)
+      }
+      return arr
+    }, [options, value, includeCurrentValue])
 
     return (
       <Popover open={open} onOpenChange={setOpen}>
@@ -229,9 +265,9 @@ export default function AddEditBusDialog({
             aria-expanded={open}
             className={cn("justify-between w-full", className)}
           >
-            {selectedLabel || (
-              <span className="text-muted-foreground">{placeholder}</span>
-            )}
+            {selectedLabel
+              ? selectedLabel
+              : <span className="text-muted-foreground">{placeholder}</span>}
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 20 20"
@@ -256,7 +292,7 @@ export default function AddEditBusDialog({
                 >
                   — Aucun —
                 </CommandItem>
-                {options.map((opt) => {
+                {preparedOptions.map((opt) => {
                   const label = getLabel ? getLabel(opt) : String(opt)
                   return (
                     <CommandItem
@@ -266,7 +302,7 @@ export default function AddEditBusDialog({
                         setOpen(false)
                       }}
                     >
-                      {label}
+                      {label || String(opt)}
                     </CommandItem>
                   )
                 })}
@@ -290,16 +326,15 @@ export default function AddEditBusDialog({
     people: Person[]
     placeholder: string
   }) {
+    const ids = React.useMemo(() => people.map((p) => p.id), [people])
     return (
       <ComboBox<Id>
         value={value}
         onChange={onChange}
-        options={people.map((p) => p.id)}
+        options={ids}
+        includeCurrentValue
         placeholder={placeholder}
-        getLabel={(id) => {
-          const p = people.find((x) => x.id === id)
-          return p ? `${p.name} - ${p.phone ?? "-"}` : String(id)
-        }}
+        getLabel={(id) => getPersonLabel(id)}
       />
     )
   }

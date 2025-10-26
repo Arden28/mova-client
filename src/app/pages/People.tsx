@@ -30,29 +30,11 @@ import {
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 import peopleApi, { type Person, type PersonRole } from "@/api/people"
 import { ApiError } from "@/api/apiService"
 
-/* ----------------------------- Avatar utilities ----------------------------- */
-
-function getInitials(name = "") {
-  const parts = name.trim().split(/\s+/).slice(0, 2)
-  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?"
-}
-
-async function fileToDataURL(file: File): Promise<string> {
-  if (!file.type.startsWith("image/")) throw new Error("Le fichier sélectionné n'est pas une image.")
-  const maxBytes = 4 * 1024 * 1024 // 4MB
-  if (file.size > maxBytes) throw new Error("Image trop volumineuse (4 Mo max).")
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(new Error("Impossible de lire l'image."))
-    reader.readAsDataURL(file)
-  })
-}
+/* -------------------------- Error helper -------------------------- */
 
 function showValidationErrors(err: unknown) {
   const e = err as ApiError
@@ -80,7 +62,6 @@ type AddEditPersonDialogProps = {
 
 function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditPersonDialogProps) {
   const [form, setForm] = React.useState<Partial<Person & { password?: string }>>({})
-  const [uploading, setUploading] = React.useState(false)
 
   React.useEffect(() => {
     setForm(editing ?? { role: "driver" })
@@ -90,32 +71,15 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
     setForm((prev) => ({ ...prev, [key]: val }))
   }
 
-  async function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    try {
-      const dataUrl = await fileToDataURL(file)
-      set("avatar", dataUrl as any) // preview; will be skipped on submit if it's a data: URL
-      toast.success("Avatar ajouté (prévisualisation).")
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Échec du chargement de l'avatar.")
-    } finally {
-      setUploading(false)
-      e.target.value = ""
-    }
-  }
-
   function handleSubmit() {
+    const role = (form.role as PersonRole) ?? "driver"
     const payload: Person & { password?: string } = {
       id: editing?.id ?? crypto.randomUUID(),
-      role: (form.role as PersonRole) ?? "driver",
+      role,
       name: String(form.name ?? "").trim(),
-      // phone is OPTIONAL on backend
       phone: form.phone ? String(form.phone).trim() : undefined,
       email: form.email ? String(form.email).trim() : undefined,
-      licenseNo: form.licenseNo ? String(form.licenseNo).trim() : undefined,
-      avatar: form.avatar ? String(form.avatar) : undefined,
+      licenseNo: role === "driver" ? (form.licenseNo ? String(form.licenseNo).trim() : undefined) : undefined,
       createdAt: editing?.createdAt ?? undefined,
       status: editing?.status ?? undefined,
       password: form.password ? String(form.password) : undefined,
@@ -124,11 +88,6 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
     if (!payload.name) {
       toast.error("Le nom est obligatoire.")
       return
-    }
-    // If avatar is a data URL, Laravel `url` rule will reject it — skip sending it.
-    if (payload.avatar && payload.avatar.startsWith("data:")) {
-      toast.error("L’avatar doit être une URL publique (http/https). Le data: URL est seulement pour la prévisualisation.")
-      delete (payload as any).avatar
     }
 
     onSubmit(payload)
@@ -141,41 +100,11 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
         <DialogHeader>
           <DialogTitle>{editing ? "Modifier la personne" : "Ajouter une personne"}</DialogTitle>
           <DialogDescription>
-            Renseignez les informations d’identité, de contact, le rôle et l’avatar.
+            Renseignez les informations d’identité, de contact et le rôle.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4">
-          {/* Avatar row */}
-          <div className="flex items-center gap-4">
-            <Avatar className="h-14 w-14 ring-1 ring-slate-200">
-              <AvatarImage src={form.avatar || undefined} alt={String(form.name ?? "")} />
-              <AvatarFallback>{getInitials(String(form.name ?? ""))}</AvatarFallback>
-            </Avatar>
-            <div className="grid gap-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="avatar">Avatar (PNG/JPG, &lt; 4 Mo)</Label>
-                <div className="flex items-center gap-2">
-                  <Input id="avatar" type="file" accept="image/*" onChange={handleAvatarFile} disabled={uploading} className="max-w-xs" />
-                  {form.avatar && (
-                    <Button variant="outline" size="sm" onClick={() => set("avatar", undefined as any)}>
-                      Retirer
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="avatarUrl">Ou coller une URL d’image</Label>
-                <div className="flex gap-2">
-                  <Input id="avatarUrl" placeholder="https://…" value={form.avatar ?? ""} onChange={(e) => set("avatar", e.target.value as any)} />
-                  <Button type="button" variant="secondary" size="sm" onClick={() => form.avatar && toast.success("URL d’avatar enregistrée.")}>
-                    Utiliser
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div className="grid gap-1.5">
             <Label>Nom</Label>
             <Input value={form.name ?? ""} onChange={(e) => set("name", e.target.value as any)} />
@@ -190,20 +119,32 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
           </div>
           <div className="grid gap-1.5">
             <Label>Rôle</Label>
-            <Select value={(form.role as PersonRole) ?? "driver"} onValueChange={(v) => set("role", v as PersonRole)}>
+            <Select
+              value={(form.role as PersonRole) ?? "driver"}
+              onValueChange={(v) => {
+                set("role", v as PersonRole)
+                if (v !== "driver") set("licenseNo", undefined as any) // clear permis when not driver
+              }}
+            >
               <SelectTrigger><SelectValue placeholder="Sélectionner un rôle" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="driver">Chauffeur</SelectItem>
                 <SelectItem value="owner">Propriétaire</SelectItem>
                 <SelectItem value="conductor">Receveur</SelectItem>
-                {/* Admin not allowed by backend */}
               </SelectContent>
             </Select>
           </div>
-          <div className="grid gap-1.5">
-            <Label>N° de permis (chauffeurs)</Label>
-            <Input value={form.licenseNo ?? ""} onChange={(e) => set("licenseNo", e.target.value as any)} placeholder="Ex: DL-123456" />
-          </div>
+
+          {(form.role as PersonRole) === "driver" && (
+            <div className="grid gap-1.5">
+              <Label>N° de permis (chauffeurs)</Label>
+              <Input
+                value={form.licenseNo ?? ""}
+                onChange={(e) => set("licenseNo", e.target.value as any)}
+                placeholder="Ex: DL-123456"
+              />
+            </div>
+          )}
 
           {/* Password only on create (optionnel) */}
           {!editing && (
@@ -278,10 +219,6 @@ export default function PeoplePage() {
         triggerField: "name",
         renderTrigger: (p) => (
           <div className="flex items-center gap-3">
-            <Avatar className="h-9 w-9 ring-1 ring-slate-200">
-              <AvatarImage src={p.avatar || undefined} alt={p.name} />
-              <AvatarFallback>{getInitials(p.name)}</AvatarFallback>
-            </Avatar>
             <div className="min-w-0">
               <div className="truncate font-medium">{p.name}</div>
               <div className="text-xs text-muted-foreground truncate">
@@ -292,11 +229,7 @@ export default function PeoplePage() {
         ),
         renderTitle: (p) => (
           <div className="flex items-center gap-3">
-            <Avatar className="h-11 w-11 ring-1 ring-slate-200">
-              <AvatarImage src={p.avatar || undefined} alt={p.name} />
-              <AvatarFallback>{getInitials(p.name)}</AvatarFallback>
-            </Avatar>
-            <span>{p.name}</span>
+            <span className="text-base font-medium">{p.name}</span>
           </div>
         ),
         renderBody: (p) => (
@@ -381,7 +314,6 @@ export default function PeoplePage() {
     )
   }
   
-    
   const groupBy: GroupByConfig<Person>[] = [
     {
       id: "role",
@@ -395,8 +327,6 @@ export default function PeoplePage() {
     },
   ]
 
-  
-  // getRowId (typed id param if you use it elsewhere)
   const getRowId = (r: Person) => String(r.id)
 
   return (
@@ -405,7 +335,7 @@ export default function PeoplePage() {
         <div>
           <h1 className="text-xl font-semibold">Chauffeurs & Propriétaires</h1>
           <p className="text-sm text-muted-foreground">
-            Onboarding des chauffeurs, gestion des permis et contrats des propriétaires.
+            Onboarding des chauffeurs, des contrôleurs, gestion des permis et contrats des propriétaires.
           </p>
         </div>
       </div>
@@ -414,7 +344,7 @@ export default function PeoplePage() {
         data={rows}
         columns={columns}
         getRowId={getRowId}
-        searchable={{ placeholder: "Rechercher nom, téléphone, email…", fields: ["name", "phone", "email", "licenseNo"] }}
+        searchable={searchable}
         filters={filters}
         loading={loading}
         onAdd={() => { setEditing(null); setOpen(true) }}
@@ -425,7 +355,6 @@ export default function PeoplePage() {
         groupBy={groupBy}
         initialView="list"
         pageSizeOptions={[10, 20, 50]}
-        // drawer={{ triggerField: "name" }}
         onDeleteSelected={async (selected) => {
           if (selected.length === 0) return
           const prev = rows
@@ -454,7 +383,7 @@ export default function PeoplePage() {
             setRows((r) => r.map(x => x.id === person.id ? { ...x, ...person } : x))
             try {
               await peopleApi.update(person.id, person)
-              await reload() // ensure canonical server data (ids, avatar_url, etc.)
+              await reload()
               toast("Profil mis à jour.")
             } catch (e) {
               setRows(prev)
@@ -467,7 +396,7 @@ export default function PeoplePage() {
             setRows((r) => [person, ...r])
             try {
               await peopleApi.create(person)
-              await reload() // replace temp with server row
+              await reload()
               toast("Personne ajoutée.")
             } catch (e) {
               setRows((r) => r.filter(x => x.id !== tempId))
@@ -481,16 +410,15 @@ export default function PeoplePage() {
         open={openImport}
         onOpenChange={setOpenImport}
         title="Importer des personnes"
-        description="Chargez un CSV/Excel, mappez les colonnes (avatar facultatif), puis validez l'import."
+        description="Chargez un CSV/Excel, mappez les colonnes, puis validez l'import."
         fields={[
           { key: "name", label: "Nom", required: true },
           { key: "role", label: "Rôle", required: true },
-          { key: "phone", label: "Téléphone" }, // optional
+          { key: "phone", label: "Téléphone" },
           { key: "email", label: "Email" },
           { key: "licenseNo", label: "N° de permis (chauffeurs)" },
-          { key: "avatar", label: "Avatar (URL ou data:…)" },
         ]}
-        sampleHeaders={["name", "role", "phone", "email", "license_no", "avatar"]}
+        sampleHeaders={["name", "role", "phone", "email", "license_no"]}
         transform={(raw) => {
           const norm = (v: string | null | undefined) => (typeof v === "string" ? v.trim() : v)
 
@@ -501,11 +429,9 @@ export default function PeoplePage() {
           const allowed = new Set<PersonRole>(["driver", "owner", "conductor"])
           if (!allowed.has(role as PersonRole)) role = "driver"
 
-          // Use nullish coalescing consistently to avoid mixing with ||.
           const phone = (norm(raw.phone) ?? undefined) as string | undefined
           const email = (norm(raw.email) ?? undefined) as string | undefined
-          const licenseNo = ((norm((raw as any).license_no) ?? norm((raw as any).licenseNo)) ?? undefined) as string | undefined
-          const avatar = (norm(raw.avatar) ?? undefined) as string | undefined
+          const licenseNoSrc = ((norm((raw as any).license_no) ?? norm((raw as any).licenseNo)) ?? undefined) as string | undefined
 
           const person: Person = {
             id: crypto.randomUUID(),
@@ -513,8 +439,7 @@ export default function PeoplePage() {
             name,
             phone,
             email,
-            licenseNo,
-            avatar,
+            licenseNo: role === "driver" ? licenseNoSrc : undefined,
             createdAt: undefined,
             status: "active",
           }
