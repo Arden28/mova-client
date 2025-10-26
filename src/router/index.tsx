@@ -40,7 +40,16 @@ function RequireAdmin() {
   if (status === "loading") return null
   const role = (user?.role ?? "").toString().toLowerCase()
   const isAdmin = role === "admin" || role === "superadmin"
-  return isAdmin ? <Outlet /> : <Navigate to="/overview" replace />
+  return isAdmin ? <Outlet /> : <Navigate to="/reservations" replace />
+}
+
+// add this helper near RequireAdmin
+function LandingRedirect() {
+  const { user, status } = useAuth()
+  if (status === "loading") return null // or a tiny spinner
+  const role = (user?.role ?? "").toString().toLowerCase()
+  const isAdmin = role === "admin" || role === "superadmin"
+  return <Navigate to={isAdmin ? "/overview" : "/reservations"} replace />
 }
 
 export const router = createBrowserRouter([
@@ -70,19 +79,19 @@ export const router = createBrowserRouter([
           {
             element: <RequireAuth />,
             children: [
-              // “/” shows Overview directly
-              { index: true, element: withSuspense(<Overview />) },
-              { path: "overview", element: withSuspense(<Overview />) },
+              // THIS is the only index route now
+              { index: true, element: <LandingRedirect /> },
 
               { path: "reservations", element: withSuspense(<Reservations />) },
               { path: "buses", element: withSuspense(<Buses />) },
               { path: "notifications", element: withSuspense(<Notifications />) },
               { path: "account", element: withSuspense(<MyAccount />) },
 
-              // Admin-only: lock people, staff, settings
+              // Admin-only
               {
                 element: <RequireAdmin />,
                 children: [
+                  { path: "overview", element: withSuspense(<Overview />) },
                   { path: "people", element: withSuspense(<People />) },
                   { path: "staff", element: withSuspense(<Staff />) },
                   { path: "settings", element: withSuspense(<Settings />) },
@@ -92,6 +101,7 @@ export const router = createBrowserRouter([
           },
         ],
       },
+
 
       /* ---------------------- MAP LAYOUT ON /map (no chrome) ---------------------- */
       {

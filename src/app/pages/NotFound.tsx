@@ -124,7 +124,6 @@ export default function NotFound() {
               <div className="flex gap-2">
                 <Button
                   variant="ghost"
-                  onClick={() => navigate("/settings")}
                   className="gap-2"
                 >
                   <Settings className="h-4 w-4" />
