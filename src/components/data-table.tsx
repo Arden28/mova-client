@@ -735,7 +735,7 @@ export function DataTable<T extends object>({
 
       {/* LIST VIEW */}
       {view === "list" ? (
-        <div className="relative px-0 ">{/* match toolbar edges */}
+        <div className="relative px-2 lg:px-3 ">{/* match toolbar edges */}
           <div className="overflow-x-auto border-x">{/* side borders only */}
             <Table className="w-full min-w-full">{/* ensure full width */}
               <TableHeader className="bg-muted sticky top-0 z-10">
@@ -815,7 +815,7 @@ export function DataTable<T extends object>({
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between mt-3 px-3 lg:px-5">{/* keep padding here */}
+          <div className="flex items-center justify-between mt-3 px-2 lg:px-3">{/* keep padding here */}
             <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">
               {table.getFilteredSelectedRowModel().rows.length} of{" "}
               {table.getFilteredRowModel().rows.length} row(s) selected.
