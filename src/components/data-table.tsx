@@ -735,7 +735,7 @@ export function DataTable<T extends object>({
 
       {/* LIST VIEW */}
       {view === "list" ? (
-        <div className="relative -mx-4 lg:-mx-6">{/* match toolbar edges */}
+        <div className="relative">{/* match toolbar edges */}
           <div className="overflow-x-auto border-x">{/* side borders only */}
             <Table className="w-full min-w-full">{/* ensure full width */}
               <TableHeader className="bg-muted sticky top-0 z-10">
