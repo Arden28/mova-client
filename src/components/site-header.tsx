@@ -13,17 +13,19 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { IconBell } from "@tabler/icons-react"
-import { Inbox, CheckCheck, Dot, ChevronDown } from "lucide-react"
+import { Inbox, CheckCheck, Dot, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type NotificationItem = {
-  id: string
-  title: string
-  description?: string
-  time?: string
-  unread?: boolean
-  type?: "info" | "success" | "warning" | "error"
-}
+/* ----------------------------- Tabs (data) ----------------------------- */
+
+const TABS = [
+  { to: "/buses", label: "Bus" },
+  { to: "/people", label: "Chauffeurs & Propriétaires" },
+  { to: "/reservations", label: "Locations" },
+  { to: "/staff", label: "Staff" },
+] as const
+
+/* ----------------------------- Empty state ----------------------------- */
 
 function EmptyState({
   title = "Aucune notification",
@@ -45,184 +47,88 @@ function EmptyState({
   )
 }
 
-/* ----------------------------- Tabs (data) ----------------------------- */
+/* ----------------------------- Secondary navbar ----------------------------- */
 
-const TABS = [
-  { to: "/buses", label: "Bus" },
-  { to: "/people", label: "Chauffeurs & Propriétaires" },
-  { to: "/reservations", label: "Locations" },
-  { to: "/staff", label: "Staff" },
-] as const
-
-function TabLink({
-  to,
-  label,
-  hasLeftBorder,
-  innerRef,
-}: {
-  to: string
-  label: string
-  hasLeftBorder?: boolean
-  innerRef?: (el: HTMLAnchorElement | null) => void
-}) {
-  return (
-    <NavLink
-      to={to}
-      ref={innerRef as any}
-      className={({ isActive }) =>
-        cn(
-          "px-3 inline-flex h-10 items-center select-none transition-colors rounded-none",
-          // baseline text + hover for all states
-          "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-          // left divider (replaces separators)
-          hasLeftBorder && "border-l border-border",
-          // active state: lift above bottom border & remove it visually
-          isActive &&
-            "bg-white text-foreground border-x border-t border-border -mb-[1px] relative z-10"
-        )
-      }
-    >
-      {label}
-    </NavLink>
-  )
-}
-
-/* ----------------------- Responsive overflow headbar ---------------------- */
-
-function ResponsiveHeadbar() {
-  const containerRef = React.useRef<HTMLDivElement | null>(null)
-  const dropdownMeasureRef = React.useRef<HTMLButtonElement | null>(null)
-
-  // Keep refs for each tab to measure width (with borders applied)
-  const itemRefs = React.useRef<(HTMLAnchorElement | null)[]>([])
-  itemRefs.current = []
-
-  const [visibleCount, setVisibleCount] = React.useState<number>(TABS.length)
-
-  const measure = React.useCallback(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    const available = container.clientWidth
-    const ddW = dropdownMeasureRef.current?.offsetWidth ?? 64 // reserve for "Plus" when needed
-
-    let used = 0
-    let count = 0
-
-    for (let i = 0; i < TABS.length; i++) {
-      const el = itemRefs.current[i]
-      if (!el) continue
-      const w = el.offsetWidth
-
-      const remaining = TABS.length - (i + 1)
-      const needsDropdown = remaining > 0
-      const nextUsed = used + w + (needsDropdown ? ddW : 0)
-
-      if (nextUsed <= available) {
-        used += w
-        count++
-      } else {
-        break
-      }
-    }
-
-    if (count === 0) count = 1 // always show at least one tab
-    setVisibleCount(count)
-  }, [])
-
-  React.useEffect(() => {
-    if (!containerRef.current) return
-    const ro = new ResizeObserver(() => measure())
-    ro.observe(containerRef.current)
-    window.addEventListener("resize", measure)
-    const t = setTimeout(measure, 0)
-    return () => {
-      ro.disconnect()
-      window.removeEventListener("resize", measure)
-      clearTimeout(t)
-    }
-  }, [measure])
-
-  const visible = TABS.slice(0, visibleCount)
-  const overflow = TABS.slice(visibleCount)
-
+function SecondaryHeadbar() {
   return (
     <div className="z-30 w-full border-b bg-primary/5">
-      {/* measuring (hidden) */}
-      <div className="absolute -z-10 -mt-[9999px] opacity-0 pointer-events-none">
-        <div className="flex h-10 items-stretch gap-0 px-4 text-sm">
-          <Button ref={dropdownMeasureRef} variant="ghost" size="sm" className="h-10 px-3 rounded-none">
-            Plus <ChevronDown className="ml-1 h-4 w-4" />
-          </Button>
+      <div className="flex items-center justify-between px-4 sm:px-6 h-10 text-sm">
+        {/* Visible links on medium+ screens */}
+        <div className="hidden md:flex items-center gap-4">
           {TABS.map((t, i) => (
-            <TabLink
-              key={`m-${t.to}`}
-              to={t.to}
-              label={t.label}
-              hasLeftBorder={i > 0}
-              innerRef={() => {}}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* visible row */}
-      <div ref={containerRef} className="w-full">
-        <div className="flex h-10 items-stretch gap-0 px-4 text-sm">
-          {visible.map((t, i) => (
-            <TabLink
+            <NavLink
               key={t.to}
               to={t.to}
-              label={t.label}
-              hasLeftBorder={i > 0}
-              innerRef={(el) => {
-                itemRefs.current[i] = el
-              }}
-            />
+              className={({ isActive }) =>
+                cn(
+                  "inline-flex h-10 items-center px-2 font-medium transition-colors border-b-2",
+                  "border-transparent hover:text-foreground text-muted-foreground",
+                  isActive && "text-foreground border-primary"
+                )
+              }
+            >
+              {t.label}
+            </NavLink>
           ))}
+        </div>
 
-          {/* Overflow dropdown */}
-          {overflow.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-10 px-3 rounded-none hover:bg-muted/60",
-                    // left divider to replace separator
-                    (visible.length > 0) && "border-l border-border"
-                  )}
-                  ref={dropdownMeasureRef}
-                >
-                  Plus <ChevronDown className="ml-1 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="p-1 min-w-56">
-                {overflow.map((t) => (
-                  <DropdownMenuItem key={t.to} asChild className="rounded-[6px]">
-                    <NavLink to={t.to} className="w-full">
-                      {t.label}
-                    </NavLink>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+        {/* Dropdown for small screens */}
+        <div className="flex md:hidden">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex items-center gap-1 text-sm"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+                <span>Plus</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="p-1 min-w-48">
+              {TABS.map((t) => (
+                <DropdownMenuItem key={t.to} asChild className="rounded-md">
+                  <NavLink
+                    to={t.to}
+                    className={({ isActive }) =>
+                      cn(
+                        "w-full px-2 py-1.5 rounded-md transition-colors",
+                        isActive
+                          ? "bg-accent text-foreground"
+                          : "hover:bg-accent/60 text-muted-foreground"
+                      )
+                    }
+                  >
+                    {t.label}
+                  </NavLink>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </div>
   )
 }
 
-/* --------------------------------- Header --------------------------------- */
+/* ----------------------------- Main Header ----------------------------- */
 
 export function SiteHeader() {
-  const [notifications, setNotifications] = React.useState<NotificationItem[]>([])
-  const unreadCount = notifications.filter((n) => n.unread).length
-  const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))
+  const [notifications, setNotifications] = React.useState<
+    {
+      id: string
+      title: string
+      description?: string
+      time?: string
+      unread?: boolean
+      type?: "info" | "success" | "warning" | "error"
+    }[]
+  >([])
 
-  // Center nav: underline active; Données active by default
+  const unreadCount = notifications.filter((n) => n.unread).length
+  const markAllRead = () =>
+    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))
+
   const location = useLocation()
   const isLocations = location.pathname.startsWith("/locations")
   const isDataActive = !isLocations
@@ -233,7 +139,7 @@ export function SiteHeader() {
       <header className="relative z-40 flex h-[56px] items-center border-b bg-background/80 backdrop-blur-md px-4 lg:px-6">
         <SidebarTrigger className="-ml-1" />
 
-        {/* Center nav (Données / Locations) */}
+        {/* Center nav */}
         <nav className="pointer-events-auto absolute left-1/2 -translate-x-1/2">
           <ul className="flex items-center gap-6">
             <li>
@@ -360,8 +266,8 @@ export function SiteHeader() {
         </div>
       </header>
 
-      {/* Secondary headbar with responsive overflow (left borders, no separators) */}
-      <ResponsiveHeadbar />
+      {/* Clean, responsive second nav */}
+      <SecondaryHeadbar />
     </>
   )
 }
