@@ -5,26 +5,36 @@ import * as React from "react"
 import { NavLink, useLocation } from "react-router-dom"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
+import useAuth from "@/hooks/useAuth"
 
-/* ----------------------------- Tabs (data) ----------------------------- */
-const TABS = [
+/* ----------------------------- Tabs (all) ----------------------------- */
+type Tab = { to: string; label: string }
+
+const ALL_TABS: readonly Tab[] = [
   { to: "/buses", label: "Bus" },
-  { to: "/people", label: "Chauffeurs & Propriétaires" },
+  { to: "/people", label: "Chauffeurs & Propriétaires" }, // admin-only
   { to: "/reservations", label: "Locations" },
-  { to: "/staff", label: "Staff" },
+  { to: "/staff", label: "Staff" }, // admin-only
 ] as const
 
+const ADMIN_ONLY_PATHS = new Set<string>(["/people", "/staff"])
+
 /* ----------------------------- Secondary navbar ----------------------------- */
-function SecondaryHeadbar() {
+function SecondaryHeadbar({ tabs }: { tabs: readonly Tab[] }) {
   return (
     <div className="z-30 w-full border-b bg-primary/5">
       <div className="flex items-center justify-between px-4 sm:px-6 h-10 text-sm">
         {/* Visible links on medium+ screens */}
         <div className="hidden md:flex items-center gap-4">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <NavLink
               key={t.to}
               to={t.to}
@@ -51,7 +61,7 @@ function SecondaryHeadbar() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="p-1 min-w-48">
-              {TABS.map((t) => (
+              {tabs.map((t) => (
                 <DropdownMenuItem key={t.to} asChild className="rounded-md">
                   <NavLink
                     to={t.to}
@@ -76,6 +86,18 @@ function SecondaryHeadbar() {
 
 /* ----------------------------- Main Header ----------------------------- */
 export function SiteHeader() {
+  const { user } = useAuth()
+  const isAdmin = React.useMemo(() => {
+    const role = (user?.role ?? "").toString().toLowerCase()
+    return role === "admin" || role === "superadmin"
+  }, [user?.role])
+
+  // filter tabs based on role
+  const visibleTabs = React.useMemo(
+    () => ALL_TABS.filter((t) => isAdmin || !ADMIN_ONLY_PATHS.has(t.to)),
+    [isAdmin]
+  )
+
   const location = useLocation()
   const isLocations = location.pathname.startsWith("/locations")
   const isDataActive = !isLocations
@@ -127,8 +149,8 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2" />
       </header>
 
-      {/* Clean, responsive second nav */}
-      <SecondaryHeadbar />
+      {/* Clean, responsive second nav (role-aware) */}
+      <SecondaryHeadbar tabs={visibleTabs} />
     </>
   )
 }
