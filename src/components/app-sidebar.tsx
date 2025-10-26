@@ -3,12 +3,9 @@
 
 import * as React from "react"
 import { NavLink } from "react-router-dom"
-import {
-  IconGauge,
-  IconSettings,
-  IconBell,
-} from "@tabler/icons-react"
+import { IconGauge, IconSettings, IconBell } from "@tabler/icons-react"
 
+import useAuth from "@/hooks/useAuth"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -57,14 +54,20 @@ function EmptyState({
 }
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
-  // Local notifications state (you can wire this to your store/api if needed)
+  const { user } = useAuth()
+  const role = (user?.role ?? "").toString().toLowerCase()
+  const isAdmin = role === "admin" || role === "superadmin"
+
+  // Local notifications state (wire to store/api if needed)
   const [notifications, setNotifications] = React.useState<Notice[]>([])
+  const unreadCount = notifications.filter((n) => n.unread).length
   const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))
 
   return (
     <Sidebar
       collapsible="offcanvas"
       className="w-[68px] border-r h-screen sticky top-0"
+      {...props}
     >
       {/* Top: Logo only (no text) */}
       <SidebarHeader className="p-2">
@@ -85,32 +88,30 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
 
-      {/* Middle: icons only */}
+      {/* Middle: icons-only primary nav */}
       <SidebarContent className="px-0">
         <SidebarMenu className="gap-1">
-          {/* Dashboard (icon only) */}
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild className="justify-center p-2" tooltip="Tableau de bord">
-              <NavLink to="/overview" aria-label="Tableau de bord" title="Tableau de bord">
-                <IconGauge className="h-5 w-5" />
-                <span className="sr-only">Tableau de bord</span>
-              </NavLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+          {/* Dashboard (icon only) — admin only */}
+          {isAdmin && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                className="justify-center p-2"
+                tooltip="Tableau de bord"
+              >
+                <NavLink to="/overview" aria-label="Tableau de bord" title="Tableau de bord">
+                  <IconGauge className="h-5 w-5" />
+                  <span className="sr-only">Tableau de bord</span>
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
+        </SidebarMenu>
+      </SidebarContent>
 
-          {/* Spacer */}
-          <div className="my-2" />
-
-          {/* Settings (icon only) */}
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild className="justify-center p-2" tooltip="Paramètres">
-              <NavLink to="/settings" aria-label="Paramètres" title="Paramètres">
-                <IconSettings className="h-5 w-5" />
-                <span className="sr-only">Paramètres</span>
-              </NavLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-
+      {/* Bottom: notifications + (admin-only) settings + user avatar */}
+      <SidebarFooter className="p-2 mt-auto">
+        <SidebarMenu className="gap-1">
           {/* Notifications (icon only, opens panel here; no badge) */}
           <SidebarMenuItem>
             <Popover>
@@ -119,6 +120,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   className="justify-center p-2"
                   aria-label="Notifications"
                   title="Notifications"
+                  tooltip="Notifications"
                 >
                   <IconBell className="h-5 w-5" />
                   <span className="sr-only">Notifications</span>
@@ -134,16 +136,14 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   <div className="space-y-0.5">
                     <p className="text-sm font-medium">Notifications</p>
                     <p className="text-xs text-muted-foreground">
-                      {notifications.some((n) => n.unread)
-                        ? `${notifications.filter((n) => n.unread).length} non lue(s)`
-                        : "Aucune non lue"}
+                      {unreadCount > 0 ? `${unreadCount} non lue(s)` : "Aucune non lue"}
                     </p>
                   </div>
                   <button
                     type="button"
                     className="text-xs text-muted-foreground hover:text-foreground"
                     onClick={markAllRead}
-                    disabled={!notifications.some((n) => n.unread)}
+                    disabled={unreadCount === 0}
                   >
                     Tout marquer lu
                   </button>
@@ -197,12 +197,29 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               </PopoverContent>
             </Popover>
           </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarContent>
 
-      {/* Bottom: avatar-only (dropdown intact) */}
-      <SidebarFooter className="p-2">
-        <NavUser compact />
+          {/* Settings (icon only) — admin only */}
+          {isAdmin && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                className="justify-center p-2"
+                tooltip="Paramètres"
+              >
+                <NavLink to="/settings" aria-label="Paramètres" title="Paramètres">
+                  <IconSettings className="h-5 w-5" />
+                  <span className="sr-only">Paramètres</span>
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
+
+          {/* User avatar (dropdown intact) */}
+          <SidebarMenuItem>
+            {/* No `compact` prop required; NavUser handles its own layout */}
+            <NavUser />
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   )

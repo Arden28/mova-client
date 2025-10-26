@@ -163,8 +163,8 @@ export default function MyAccount() {
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList className="flex w-full justify-start overflow-x-auto">
           <TabsTrigger value="profile" className="gap-2"><UserRound className="h-4 w-4" /> Profil</TabsTrigger>
-          <TabsTrigger value="prefs" className="gap-2"><Globe className="h-4 w-4" /> Préférences</TabsTrigger>
-          <TabsTrigger value="notifications" className="gap-2"><Bell className="h-4 w-4" /> Notifications</TabsTrigger>
+          {/* <TabsTrigger value="prefs" className="gap-2"><Globe className="h-4 w-4" /> Préférences</TabsTrigger> */}
+          {/* <TabsTrigger value="notifications" className="gap-2"><Bell className="h-4 w-4" /> Notifications</TabsTrigger> */}
           <TabsTrigger value="security" className="gap-2"><Shield className="h-4 w-4" /> Sécurité</TabsTrigger>
         </TabsList>
 
