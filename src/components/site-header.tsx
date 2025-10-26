@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 import { IconBell } from "@tabler/icons-react"
 import { Inbox, CheckCheck, Dot } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -51,14 +52,11 @@ export function SiteHeader() {
 
   return (
     <>
-      {/* Main header */}
+      {/* Top header */}
       <header className="relative z-40 flex h-[56px] items-center border-b bg-background/80 backdrop-blur-md px-4 lg:px-6">
-        {/* Left: Sidebar trigger */}
-        <div className="flex items-center gap-2">
-          <SidebarTrigger className="-ml-1" />
-        </div>
+        <SidebarTrigger className="-ml-1" />
 
-        {/* Center: plain nav, underline primary when active */}
+        {/* Center nav */}
         <nav className="pointer-events-auto absolute left-1/2 -translate-x-1/2">
           <ul className="flex items-center gap-6">
             <li>
@@ -66,9 +64,8 @@ export function SiteHeader() {
                 to="/data"
                 className={({ isActive }) =>
                   cn(
-                    "inline-flex items-center px-1.5 py-1 text-sm font-medium",
-                    "text-muted-foreground hover:text-foreground transition-colors",
-                    "border-b-2 border-transparent",
+                    "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 border-transparent transition-colors",
+                    "text-muted-foreground hover:text-foreground",
                     isActive && "text-primary border-primary"
                   )
                 }
@@ -81,9 +78,8 @@ export function SiteHeader() {
                 to="/locations"
                 className={({ isActive }) =>
                   cn(
-                    "inline-flex items-center px-1.5 py-1 text-sm font-medium",
-                    "text-muted-foreground hover:text-foreground transition-colors",
-                    "border-b-2 border-transparent",
+                    "inline-flex items-center px-1.5 py-1 text-sm font-medium border-b-2 border-transparent transition-colors",
+                    "text-muted-foreground hover:text-foreground",
                     isActive && "text-primary border-primary"
                   )
                 }
@@ -94,18 +90,14 @@ export function SiteHeader() {
           </ul>
         </nav>
 
-        {/* Right: Notifications */}
+        {/* Right side */}
         <div className="ml-auto flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className={cn(
-                  "relative",
-                  "hover:bg-accent hover:text-accent-foreground",
-                  "data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
-                )}
+                className="relative hover:bg-accent hover:text-accent-foreground"
               >
                 <IconBell className="h-5 w-5" />
                 {unreadCount > 0 && (
@@ -116,15 +108,7 @@ export function SiteHeader() {
               </Button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent
-              align="end"
-              className={cn(
-                "w-80 p-0",
-                "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
-                "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
-              )}
-            >
-              {/* Header */}
+            <DropdownMenuContent align="end" className="w-80 p-0">
               <div className="flex items-center justify-between px-4 py-3">
                 <div className="space-y-0.5">
                   <p className="text-sm font-medium">Notifications</p>
@@ -146,7 +130,6 @@ export function SiteHeader() {
                 </Button>
               </div>
 
-              {/* List / Empty */}
               {notifications.length === 0 ? (
                 <EmptyState />
               ) : (
@@ -176,7 +159,6 @@ export function SiteHeader() {
                             {n.type ?? "info"}
                           </Badge>
                         </div>
-
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium leading-5">{n.title}</p>
                           {n.description && (
@@ -194,66 +176,51 @@ export function SiteHeader() {
                   </ul>
                 </ScrollArea>
               )}
-
-              {/* Footer */}
-              <div className="flex items-center justify-between px-4 py-2">
-                <Button variant="ghost" size="sm">
-                  Voir tout
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setNotifications([])}>
-                  Vider
-                </Button>
-              </div>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </header>
 
-      {/* Secondary headbar (full width, links separated by |, no rounded/borders) */}
+      {/* Secondary headbar */}
       <div className="z-30 w-full border-b bg-primary/5">
-        <div className="mx-auto w-full max-w-screen-2xl px-4">
-          <div className="flex h-10 items-center justify-center overflow-x-auto whitespace-nowrap text-sm">
+        <ScrollArea className="w-full">
+          <div className="flex h-10 items-center gap-2 px-4 text-sm">
             <NavItem to="/bus" label="Bus" />
-            <SeparatorPipe />
+            <Separator orientation="vertical" className="h-5" />
             <NavItem to="/chauffeurs" label="Chauffeurs" />
-            <SeparatorPipe />
+            <Separator orientation="vertical" className="h-5" />
             <NavItem to="/controleurs" label="Contrôleurs" />
-            <SeparatorPipe />
+            <Separator orientation="vertical" className="h-5" />
             <NavItem to="/proprietaires" label="Propriétaires de bus" />
-            <SeparatorPipe />
+            <Separator orientation="vertical" className="h-5" />
             <NavItem to="/clients" label="Clients" />
-            <SeparatorPipe />
+            <Separator orientation="vertical" className="h-5" />
             <NavItem to="/activites" label="Activités" />
-            <SeparatorPipe />
+            <Separator orientation="vertical" className="h-5" />
             <NavItem to="/locations" label="Locations" />
-            <SeparatorPipe />
+            <Separator orientation="vertical" className="h-5" />
             <NavItem to="/staff" label="Staff" />
           </div>
-        </div>
+        </ScrollArea>
       </div>
     </>
   )
 }
 
-/* --- Small helper components for the secondary headbar --- */
-
+/* --- Helpers --- */
 function NavItem({ to, label }: { to: string; label: string }) {
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
         cn(
-          "px-2 py-1 text-muted-foreground hover:text-foreground transition-colors",
-          "border-b-2 border-transparent",
-          isActive && "text-primary border-primary"
+          "px-3 py-1 transition-colors border-b-2 border-transparent",
+          "text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-none",
+          isActive && "text-primary border-primary bg-muted/50"
         )
       }
     >
       {label}
     </NavLink>
   )
-}
-
-function SeparatorPipe() {
-  return <span className="px-2 text-muted-foreground/70" aria-hidden>|</span>
 }
