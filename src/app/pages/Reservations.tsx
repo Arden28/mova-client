@@ -219,6 +219,15 @@ export default function ReservationPage() {
         enableSorting: false,
       },
 
+      // Statut
+      {
+        accessorKey: "event",
+        header: "Evénement",
+        cell: ({ row }) => (
+          <Badge variant="outline" className="px-1.5 capitalize">{row.original.event}</Badge>
+        ),
+      },
+
       // Total
       {
         id: "total",
@@ -252,6 +261,11 @@ export default function ReservationPage() {
       id: "client",
       label: "Clients",
       accessor: (r: UIReservation) => r.passenger?.name ?? "—",
+    },
+    {
+      id: "event",
+      label: "Evénements",
+      accessor: (r: UIReservation) => r.event ?? "—",
     },
   ]
 
