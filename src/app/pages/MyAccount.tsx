@@ -1,3 +1,4 @@
+// src/pages/MyAccount.tsx
 "use client"
 
 import * as React from "react"
@@ -13,20 +14,20 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Separator } from "@/components/ui/separator"
-import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Shield, Bell, UserRound, Globe, LogOut, Trash2, UploadCloud, CheckCircle2 } from "lucide-react"
-// import { cn } from "@/lib/utils"
+import { Shield, UploadCloud, CheckCircle2, UserRound } from "lucide-react"
+
+// <-- use the auth.ts API you shared
+import auth from "@/api/auth"
 
 /* ------------------------------- Schémas ------------------------------- */
 const profileSchema = z.object({
   firstName: z.string().min(1, "Requis"),
   lastName: z.string().min(1, "Requis"),
   email: z.string().email("Email invalide"),
-  phone: z.string().min(5, "Numéro invalide").optional(),
+  phone: z.string().min(5, "Numéro invalide").optional().or(z.literal("")),
   role: z.string().optional(),
+  avatarUrl: z.string().url().optional().or(z.literal("")),
 })
 
 const prefsSchema = z.object({
@@ -46,109 +47,222 @@ const notifSchema = z.object({
 })
 
 const securitySchema = z.object({
-  currentPassword: z.string().optional(),
-  newPassword: z.string().optional(),
-  confirmPassword: z.string().optional(),
+  currentPassword: z.string().optional().or(z.literal("")),
+  newPassword: z.string().optional().or(z.literal("")),
+  confirmPassword: z.string().optional().or(z.literal("")),
   twoFA: z.boolean(),
 })
 
-/* ------------------------------ Defaults ------------------------------ */
-const defaultProfile = {
-  firstName: "Arden",
-  lastName: "Bouet",
-  email: "arden@example.com",
-  phone: "+242060000000",
-  role: "Admin",
-}
-
-const defaultPrefs = {
-  language: "fr",
-  timezone: "Africa/Brazzaville",
-  currency: "XAF",
-  dateFormat: "dd/MM/yyyy",
-}
-
-const defaultNotif = {
-  emailBooking: true,
-  emailPayment: true,
-  emailCancellation: true,
-  smsBooking: true,
-  smsPayment: false,
-  smsCancellation: false,
-}
-
-const defaultSecurity = {
-  currentPassword: "",
-  newPassword: "",
-  confirmPassword: "",
-  twoFA: false,
+type MeShape = {
+  id?: string
+  firstName?: string
+  lastName?: string
+  name?: string // fallback if your API uses "name"
+  email?: string
+  phone?: string
+  role?: string
+  avatarUrl?: string
+  // Optionally include prefs/notifications/twoFA if your /auth/me returns them
+  prefs?: Partial<z.infer<typeof prefsSchema>>
+  notifications?: Partial<z.infer<typeof notifSchema>>
+  security?: { twoFA?: boolean }
 }
 
 /* ------------------------------ Component ----------------------------- */
 export default function MyAccount() {
+  const [loading, setLoading] = React.useState(true)
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null)
-  const [sessions] = React.useState<Array<{
-    id: string
-    device: string
-    location: string
-    lastActive: string
-    current?: boolean
-  }>>([
-    { id: "s1", device: "Chrome • Windows", location: "Brazzaville, CG", lastActive: "Il y a 2 min", current: true },
-    { id: "s2", device: "Safari • iPhone 14", location: "Pointe-Noire, CG", lastActive: "Hier, 18:43" },
-  ])
 
   const profileForm = useForm<z.infer<typeof profileSchema>>({
     resolver: zodResolver(profileSchema),
-    defaultValues: defaultProfile,
+    defaultValues: {
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      role: "Admin",
+      avatarUrl: "",
+    },
   })
 
   const prefsForm = useForm<z.infer<typeof prefsSchema>>({
     resolver: zodResolver(prefsSchema),
-    defaultValues: defaultPrefs,
+    defaultValues: {
+      language: "fr",
+      timezone: "Africa/Brazzaville",
+      currency: "XAF",
+      dateFormat: "dd/MM/yyyy",
+    },
   })
 
   const notifForm = useForm<z.infer<typeof notifSchema>>({
     resolver: zodResolver(notifSchema),
-    defaultValues: defaultNotif,
+    defaultValues: {
+      emailBooking: true,
+      emailPayment: true,
+      emailCancellation: true,
+      smsBooking: true,
+      smsPayment: false,
+      smsCancellation: false,
+    },
   })
 
   const securityForm = useForm<z.infer<typeof securitySchema>>({
     resolver: zodResolver(securitySchema),
-    defaultValues: defaultSecurity,
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+      twoFA: false,
+    },
   })
 
-  /* ------------------------------ Handlers ------------------------------ */
-  const onSaveProfile = (v: z.infer<typeof profileSchema>) => {
-    toast.success("Profil mis à jour")
-  }
-  const onSavePrefs = (v: z.infer<typeof prefsSchema>) => {
-    toast.success("Préférences enregistrées")
-  }
-  const onSaveNotif = (v: z.infer<typeof notifSchema>) => {
-    toast.success("Préférences de notifications enregistrées")
-  }
-  const onSaveSecurity = (v: z.infer<typeof securitySchema>) => {
-    if (v.newPassword && v.newPassword !== v.confirmPassword) {
-      toast.error("La confirmation du mot de passe ne correspond pas")
-      return
+  /* ------------------------------ Load me ------------------------------ */
+  React.useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        setLoading(true)
+        const user = await auth.fetchUser<MeShape>("/auth/me") // or "/user" if that's your endpoint
+        if (!alive) return
+
+        // Derive first/last name if your API gives a single "name"
+        let firstName = user?.firstName ?? ""
+        let lastName = user?.lastName ?? ""
+
+        if (!firstName && !lastName && user?.name) {
+          const parts = String(user.name).trim().split(/\s+/)
+          firstName = parts[0] ?? ""
+          lastName = parts.slice(1).join(" ")
+        }
+
+        profileForm.reset({
+          firstName,
+          lastName,
+          email: user?.email ?? "",
+          phone: user?.phone ?? "",
+          role: user?.role ?? "Admin",
+          avatarUrl: user?.avatarUrl ?? "",
+        })
+        if (user?.avatarUrl) setAvatarPreview(user.avatarUrl)
+
+        // If your /auth/me returns prefs / notifications / twoFA, hydrate them:
+        if (user?.prefs) {
+          prefsForm.reset({
+            language: user.prefs.language ?? "fr",
+            timezone: user.prefs.timezone ?? "Africa/Brazzaville",
+            currency: user.prefs.currency ?? "XAF",
+            dateFormat: user.prefs.dateFormat ?? "dd/MM/yyyy",
+          })
+        }
+        if (user?.notifications) {
+          notifForm.reset({
+            emailBooking: !!user.notifications.emailBooking,
+            emailPayment: !!user.notifications.emailPayment,
+            emailCancellation: !!user.notifications.emailCancellation,
+            smsBooking: !!user.notifications.smsBooking,
+            smsPayment: !!user.notifications.smsPayment,
+            smsCancellation: !!user.notifications.smsCancellation,
+          })
+        }
+        if (typeof user?.security?.twoFA === "boolean") {
+          securityForm.setValue("twoFA", !!user.security.twoFA)
+        }
+      } catch (e: any) {
+        toast.error(e?.message ?? "Impossible de charger votre compte.")
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
     }
-    toast.success("Sécurité mise à jour")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* ------------------------------ Handlers ------------------------------ */
+  const onSaveProfile = async (v: z.infer<typeof profileSchema>) => {
+    try {
+      await auth.updateProfile({
+        firstName: v.firstName,
+        lastName: v.lastName,
+        email: v.email,
+        phone: v.phone || null,
+        role: v.role || null,
+        avatarUrl: v.avatarUrl || avatarPreview || null,
+      })
+      toast.success("Profil mis à jour")
+    } catch (e: any) {
+      toast.error(e?.message ?? "Échec de la mise à jour du profil.")
+    }
   }
 
-  const onUploadAvatar = (file?: File | null) => {
+  const onSavePrefs = async (v: z.infer<typeof prefsSchema>) => {
+    try {
+      await auth.updatePrefs(v)
+      toast.success("Préférences enregistrées")
+    } catch (e: any) {
+      toast.error(e?.message ?? "Échec de l’enregistrement des préférences.")
+    }
+  }
+
+  const onSaveNotif = async (v: z.infer<typeof notifSchema>) => {
+    try {
+      await auth.updateNotifications(v)
+      toast.success("Préférences de notifications enregistrées")
+    } catch (e: any) {
+      toast.error(e?.message ?? "Échec de l’enregistrement des notifications.")
+    }
+  }
+
+  const onSaveSecurity = async (v: z.infer<typeof securitySchema>) => {
+    try {
+      if ((v.newPassword || v.confirmPassword) && v.newPassword !== v.confirmPassword) {
+        toast.error("La confirmation du mot de passe ne correspond pas")
+        return
+      }
+      if (v.newPassword) {
+        await auth.changePassword({
+          currentPassword: v.currentPassword ?? "",
+          newPassword: v.newPassword ?? "",
+        })
+      }
+      // Persist 2FA toggle if supported
+      if (typeof v.twoFA === "boolean") {
+        await auth.setTwoFA({ enabled: v.twoFA })
+      }
+      toast.success("Sécurité mise à jour")
+      securityForm.reset({
+        ...securityForm.getValues(),
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      })
+    } catch (e: any) {
+      toast.error(e?.message ?? "Échec de la mise à jour de la sécurité.")
+    }
+  }
+
+  const onUploadAvatar = async (file?: File | null) => {
     if (!file) return
-    const url = URL.createObjectURL(file)
-    setAvatarPreview(url)
-    toast.success("Avatar mis à jour")
-  }
-
-  const signOutAll = () => {
-    toast.info("Toutes les sessions seront déconnectées (simulation).")
-  }
-
-  const deleteAccount = () => {
-    toast.error("Suppression de compte indisponible en mode démo.")
+    try {
+      const fd = new FormData()
+      fd.append("avatar", file)
+      const res = await auth.uploadAvatar(fd) // -> { url?: string }
+      const url = res.data?.url as string | undefined
+      if (url) {
+        setAvatarPreview(url)
+        profileForm.setValue("avatarUrl", url, { shouldDirty: true })
+        toast.success("Avatar mis à jour")
+      } else {
+        // Fallback to local preview if API doesn’t return URL
+        const local = URL.createObjectURL(file)
+        setAvatarPreview(local)
+        toast.success("Avatar chargé (prévisualisation)")
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Échec du chargement de l’avatar.")
+    }
   }
 
   return (
@@ -162,10 +276,15 @@ export default function MyAccount() {
 
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList className="flex w-full justify-start overflow-x-auto">
-          <TabsTrigger value="profile" className="gap-2"><UserRound className="h-4 w-4" /> Profil</TabsTrigger>
-          {/* <TabsTrigger value="prefs" className="gap-2"><Globe className="h-4 w-4" /> Préférences</TabsTrigger> */}
-          {/* <TabsTrigger value="notifications" className="gap-2"><Bell className="h-4 w-4" /> Notifications</TabsTrigger> */}
-          <TabsTrigger value="security" className="gap-2"><Shield className="h-4 w-4" /> Sécurité</TabsTrigger>
+          <TabsTrigger value="profile" className="gap-2">
+            <UserRound className="h-4 w-4" /> Profil
+          </TabsTrigger>
+          {/* Re-enable when ready */}
+          {/* <TabsTrigger value="prefs" className="gap-2"><Globe className="h-4 w-4" /> Préférences</TabsTrigger>
+          <TabsTrigger value="notifications" className="gap-2"><Bell className="h-4 w-4" /> Notifications</TabsTrigger> */}
+          <TabsTrigger value="security" className="gap-2">
+            <Shield className="h-4 w-4" /> Sécurité
+          </TabsTrigger>
         </TabsList>
 
         {/* ------------------------------ Profil ------------------------------ */}
@@ -175,6 +294,7 @@ export default function MyAccount() {
               <CardTitle>Profil</CardTitle>
               <CardDescription>Vos informations visibles par l’équipe et sur les documents.</CardDescription>
             </CardHeader>
+
             <CardContent className="grid gap-6 md:grid-cols-3">
               {/* Avatar */}
               <div className="flex flex-col items-center gap-3">
@@ -187,16 +307,18 @@ export default function MyAccount() {
                     </div>
                   )}
                 </div>
-                <label className="flex items-center gap-2 text-sm">
+
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <UploadCloud className="h-4 w-4" />
                   <span>Télécharger</span>
                   <Input
                     type="file"
                     accept="image/*"
                     className="sr-only"
-                    onChange={(e) => onUploadAvatar(e.target.files?.[0])}
+                    onChange={(e) => onUploadAvatar(e.target.files?.[0] ?? null)}
                   />
                 </label>
+
                 {avatarPreview && (
                   <span className="flex items-center gap-1 text-xs text-muted-foreground">
                     <CheckCircle2 className="h-3.5 w-3.5" /> Prévisualisation
@@ -209,19 +331,19 @@ export default function MyAccount() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Prénom</Label>
-                    <Input {...profileForm.register("firstName")} />
+                    <Input disabled={loading} {...profileForm.register("firstName")} />
                   </div>
                   <div className="space-y-2">
                     <Label>Nom</Label>
-                    <Input {...profileForm.register("lastName")} />
+                    <Input disabled={loading} {...profileForm.register("lastName")} />
                   </div>
                   <div className="space-y-2">
                     <Label>Email</Label>
-                    <Input type="email" {...profileForm.register("email")} />
+                    <Input disabled={loading} type="email" {...profileForm.register("email")} />
                   </div>
                   <div className="space-y-2">
                     <Label>Téléphone</Label>
-                    <Input placeholder="+242..." {...profileForm.register("phone")} />
+                    <Input disabled={loading} placeholder="+242..." {...profileForm.register("phone")} />
                   </div>
                   <div className="space-y-2">
                     <Label>Rôle</Label>
@@ -229,7 +351,9 @@ export default function MyAccount() {
                       defaultValue={profileForm.getValues("role") || "Admin"}
                       onValueChange={(v) => profileForm.setValue("role", v, { shouldDirty: true })}
                     >
-                      <SelectTrigger><SelectValue placeholder="Sélectionner un rôle" /></SelectTrigger>
+                      <SelectTrigger disabled={loading}>
+                        <SelectValue placeholder="Sélectionner un rôle" />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Admin">Administrateur</SelectItem>
                         <SelectItem value="Manager">Manager</SelectItem>
@@ -238,16 +362,21 @@ export default function MyAccount() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {/* Hidden but kept in form so avatar url is persisted */}
+                  <input type="hidden" {...profileForm.register("avatarUrl")} />
                 </div>
               </div>
             </CardContent>
+
             <CardFooter className="justify-end">
-              <Button onClick={profileForm.handleSubmit(onSaveProfile)}>Enregistrer</Button>
+              <Button disabled={loading} onClick={profileForm.handleSubmit(onSaveProfile)}>
+                Enregistrer
+              </Button>
             </CardFooter>
           </Card>
         </TabsContent>
 
-        {/* --------------------------- Préférences --------------------------- */}
+        {/* --------------------------- Préférences (optional UI) ---------------------------
         <TabsContent value="prefs">
           <Card>
             <CardHeader>
@@ -323,8 +452,9 @@ export default function MyAccount() {
             </CardFooter>
           </Card>
         </TabsContent>
+        --------------------------------------------------------------------- */}
 
-        {/* --------------------------- Notifications --------------------------- */}
+        {/* --------------------------- Notifications (optional UI) ---------------------------
         <TabsContent value="notifications">
           <Card>
             <CardHeader>
@@ -400,13 +530,14 @@ export default function MyAccount() {
             </CardFooter>
           </Card>
         </TabsContent>
+        --------------------------------------------------------------------- */}
 
         {/* ------------------------------ Sécurité ------------------------------ */}
         <TabsContent value="security">
           <Card>
             <CardHeader>
               <CardTitle>Sécurité</CardTitle>
-              <CardDescription>Protégez votre compte et gérez les sessions actives.</CardDescription>
+              <CardDescription>Protégez votre compte et gérez les options sensibles.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-8">
               {/* Mot de passe */}
@@ -444,7 +575,7 @@ export default function MyAccount() {
                   </div>
                   <Switch
                     checked={securityForm.watch("twoFA")}
-                    onCheckedChange={(v) => securityForm.setValue("twoFA", v)}
+                    onCheckedChange={(v) => securityForm.setValue("twoFA", v, { shouldDirty: true })}
                   />
                 </div>
                 <Alert>
@@ -454,58 +585,6 @@ export default function MyAccount() {
                   </AlertDescription>
                 </Alert>
               </section>
-
-              {/* Sessions actives */}
-              {/* <section className="grid gap-4 rounded-lg border p-0">
-                <div className="flex items-center justify-between p-4">
-                  <p className="text-sm font-medium">Sessions actives</p>
-                  <Button size="sm" variant="outline" onClick={signOutAll}>
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Déconnecter toutes les sessions
-                  </Button>
-                </div>
-                <Separator />
-                <ScrollArea className="max-h-64">
-                  <ul className="divide-y">
-                    {sessions.map((s) => (
-                      <li key={s.id} className="flex items-center justify-between p-4">
-                        <div className="space-y-0.5">
-                          <p className="text-sm font-medium">{s.device}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {s.location} • {s.lastActive}
-                          </p>
-                        </div>
-                        {s.current ? (
-                          <Badge variant="secondary">Cette session</Badge>
-                        ) : (
-                          <Button size="sm" variant="ghost">
-                            Déconnecter
-                          </Button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </ScrollArea>
-              </section> */}
-
-              {/* Danger zone */}
-              {/* <section className="grid gap-4 rounded-lg border p-4">
-                <div className="flex items-center gap-2">
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                  <p className="text-sm font-medium">Zone sensible</p>
-                </div>
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between rounded-lg border p-4">
-                  <div>
-                    <p className="text-sm font-medium">Supprimer le compte</p>
-                    <p className="text-xs text-muted-foreground">
-                      Action irréversible. Toutes vos données seront effacées.
-                    </p>
-                  </div>
-                  <Button variant="destructive" onClick={deleteAccount}>
-                    Supprimer le compte
-                  </Button>
-                </div>
-              </section> */}
             </CardContent>
           </Card>
         </TabsContent>

@@ -13,7 +13,6 @@ const storage = {
     try {
       return window.localStorage.getItem(USER_KEY)
     } catch {
-      /* ignore localStorage errors (SSR / private mode) */
       return null
     }
   },
@@ -21,17 +20,13 @@ const storage = {
     if (!hasWindow()) return
     try {
       window.localStorage.setItem(USER_KEY, value)
-    } catch {
-      /* ignore localStorage errors (SSR / private mode) */
-    }
+    } catch {}
   },
   removeUser() {
     if (!hasWindow()) return
     try {
       window.localStorage.removeItem(USER_KEY)
-    } catch {
-      /* ignore localStorage errors (SSR / private mode) */
-    }
+    } catch {}
   },
 }
 
@@ -47,12 +42,36 @@ export type LoginResponse<TUser = unknown> = {
 }
 
 export type MeResponse<TUser = unknown> = {
-  // Some APIs return { user }, others return raw user
   user?: TUser | null
-  // plus any other fields...
+}
+
+type ChangePasswordBody = {
+  currentPassword: string
+  newPassword: string
+}
+
+type TwoFAPayload = { enabled: boolean }
+
+type UploadAvatarResult = { url?: string }
+
+// Small helper: try PUT, fallback to PATCH if API uses that.
+async function putOrPatch<T = unknown, B = unknown>(
+  url: string,
+  body: B
+): Promise<ApiResult<T>> {
+  try {
+    return await apiService.put<T, B>(url, body)
+  } catch (e: any) {
+    if (e instanceof ApiError && (e.status === 405 || e.status === 404)) {
+      // Method/route not allowed — try PATCH
+      return await apiService.patch<T, B>(url, body)
+    }
+    throw e
+  }
 }
 
 const auth = {
+  /* ------------------------- user cache ------------------------- */
   getUser<TUser = unknown>(): TUser | null {
     const raw = storage.getUserRaw()
     if (!raw) return null
@@ -70,11 +89,18 @@ const auth = {
     }
     try {
       storage.setUserRaw(JSON.stringify(user))
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   },
 
+  /** Merge a partial update into the cached user. */
+  mergeAndCacheUser<TUser extends Record<string, any> = any>(partial: Partial<TUser>) {
+    const current = (this.getUser<TUser>() ?? {}) as TUser
+    const next = { ...current, ...partial }
+    this.setUser<TUser>(next)
+    return next
+  },
+
+  /* ------------------------- auth core -------------------------- */
   async login<TUser = unknown>(
     credentials: Credentials,
     path: "/auth/login" | "/login" = "/auth/login"
@@ -89,7 +115,15 @@ const auth = {
     return res
   },
 
-
+  async refreshToken(path: "/auth/refresh" | "/refresh" = "/auth/refresh") {
+    const res = await apiService.post<LoginResponse>(path)
+    const token = res.data.token ?? res.data.access_token
+    if (!token) throw new ApiError(res.status, "Impossible d’actualiser le jeton.")
+    apiService.setToken(token)
+    // Some backends also return user here:
+    if (res.data.user) auth.setUser(res.data.user)
+    return res
+  },
 
   async logout(path: "/auth/logout" | "/logout" = "/auth/logout") {
     const hadToken = !!apiService.getToken?.()
@@ -100,13 +134,10 @@ const auth = {
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 419)) {
         // already invalid → ignore
-      } else {
-        // optionally log other errors
       }
     } finally {
       apiService.removeToken()
-      this.setUser?.(null as any) // defensive: clear cached user
-      // ^ if you exported setUser — if not, leave it out. AuthContext handles it anyway.
+      auth.setUser(null) // clear cached user
     }
     return { success: true, data: null, status: 204 } as ApiResult<null>
   },
@@ -121,7 +152,6 @@ const auth = {
     const res = await apiService.get<any>(path)
     const data = res.data
 
-    // Try common shapes
     let user: TUser | null = null
     if (data && typeof data === "object") {
       if ("user" in data) {
@@ -130,10 +160,74 @@ const auth = {
         user = data as TUser
       }
     }
-
-    // Cache (do not remove token here)
     auth.setUser(user)
     return user
+  },
+
+  /* ---------------------- account handlers ---------------------- */
+
+  /**
+   * Update profile fields (name, phone, role, avatarUrl, etc.).
+   * Tries PUT /me then falls back to PATCH /me for APIs that prefer PATCH.
+   */
+  async updateProfile<TUser = any>(
+    body: Record<string, unknown>,
+    path: "/me" | "/auth/me" = "/me"
+  ) {
+    const res = await putOrPatch<TUser, typeof body>(path, body)
+    // If API returns the fresh user, cache it; otherwise merge partial.
+    const returned = res.data as any
+    if (returned && (returned.id || returned.email || returned.name)) {
+      auth.setUser(returned)
+    } else {
+      auth.mergeAndCacheUser(body as any)
+    }
+    return res
+  },
+
+  /** Preferences (language, timezone, currency, dateFormat, …). */
+  async updatePrefs(
+    body: Record<string, unknown>,
+    path: "/me/prefs" | "/settings/prefs" = "/me/prefs"
+  ) {
+    return await putOrPatch(path, body)
+  },
+
+  /** Notification channels toggles. */
+  async updateNotifications(
+    body: Record<string, unknown>,
+    path: "/me/notifications" | "/settings/notifications" = "/me/notifications"
+  ) {
+    return await putOrPatch(path, body)
+  },
+
+  /** Change password. */
+  async changePassword(
+    body: ChangePasswordBody,
+    path: "/me/change-password" | "/auth/password" = "/me/change-password"
+  ) {
+    return await apiService.post(path, body)
+  },
+
+  /** 2FA toggle. */
+  async setTwoFA(
+    body: TwoFAPayload,
+    path: "/me/2fa" | "/auth/2fa" = "/me/2fa"
+  ) {
+    return await putOrPatch(path, body)
+  },
+
+  /** Upload avatar; expects a FormData with key "avatar". */
+  async uploadAvatar(
+    formData: FormData,
+    path: "/me/avatar" | "/upload/avatar" = "/me/avatar"
+  ): Promise<ApiResult<UploadAvatarResult>> {
+    // NOTE: do NOT set Content-Type; browser will set proper multipart boundary.
+    const res = await apiService.post<UploadAvatarResult, FormData>(path, formData)
+    // If backend returns an URL, merge it into cached user.
+    const url = res.data?.url
+    if (url) auth.mergeAndCacheUser({ avatarUrl: url })
+    return res
   },
 }
 
