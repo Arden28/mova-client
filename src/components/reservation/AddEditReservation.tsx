@@ -605,17 +605,61 @@ function EventCombobox({
   )
 }
 
-/* ------------------------------ Date Picker -------------------------------- */
+/* --------------------------- Local ISO helpers ----------------------------- */
 
-function TripDatePicker({
-  value,
+function pad(n: number) { return String(n).padStart(2, "0") }
+function toIsoLocal(d: Date) {
+  const y = d.getFullYear()
+  const m = pad(d.getMonth() + 1)
+  const day = pad(d.getDate())
+  const hh = pad(d.getHours())
+  const mm = pad(d.getMinutes())
+  const ss = pad(d.getSeconds())
+  const offsetMin = d.getTimezoneOffset()
+  const sign = offsetMin > 0 ? "-" : "+"
+  const abs = Math.abs(offsetMin)
+  const oh = pad(Math.floor(abs / 60))
+  const om = pad(abs % 60)
+  return `${y}-${m}-${day}T${hh}:${mm}:${ss}${sign}${oh}:${om}`
+}
+
+/* ---------------------------- Datetime Picker ------------------------------ */
+
+function TripDateTimePicker({
+  valueIso,
   onChange,
 }: {
-  value: string | undefined
-  onChange: (isoDateYMD: string) => void
+  valueIso?: string
+  onChange: (iso: string) => void
 }) {
   const [open, setOpen] = React.useState(false)
-  const date = value ? new Date(value) : undefined
+
+  const initial = React.useMemo(() => (valueIso ? new Date(valueIso) : new Date()), [valueIso])
+  const [date, setDate] = React.useState<Date>(initial)
+  const [time, setTime] = React.useState<string>(format(initial, "HH:mm"))
+
+  React.useEffect(() => {
+    if (!valueIso) return
+    const d = new Date(valueIso)
+    if (!Number.isNaN(d.getTime())) {
+      setDate(d)
+      setTime(format(d, "HH:mm"))
+    }
+  }, [valueIso])
+
+  function apply(nextDate?: Date, nextTime?: string) {
+    const d = new Date(nextDate ?? date)
+    const [hh, mm] = (nextTime ?? time).split(":").map((s) => Number(s))
+    d.setHours(Number.isFinite(hh) ? hh : 0)
+    d.setMinutes(Number.isFinite(mm) ? mm : 0)
+    d.setSeconds(0)
+    onChange(toIsoLocal(d))
+  }
+
+  const displayLabel = React.useMemo(() => {
+    const d = valueIso ? new Date(valueIso) : date
+    return Number.isNaN(d.getTime()) ? "Choisir une date & heure" : format(d, "yyyy-MM-dd HH:mm")
+  }, [valueIso, date])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -626,23 +670,59 @@ function TripDatePicker({
           className="w-full justify-start text-left font-normal"
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, "yyyy-MM-dd") : <span className="text-muted-foreground">Choisir une date</span>}
+          <span className={cn(!valueIso && "text-muted-foreground")}>
+            {displayLabel}
+          </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="p-0" align="start">
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={(d) => {
-            if (!d) return
-            const y = d.getFullYear()
-            const m = String(d.getMonth() + 1).padStart(2, "0")
-            const day = String(d.getDate()).padStart(2, "0")
-            onChange(`${y}-${m}-${day}`)
-            setOpen(false)
-          }}
-          initialFocus
-        />
+        <div className="p-2">
+          <Calendar
+            mode="single"
+            selected={date}
+            onSelect={(d) => {
+              if (!d) return
+              // keep time
+              const withOldTime = new Date(d)
+              const [hh, mm] = time.split(":").map(Number)
+              withOldTime.setHours(hh || 0, mm || 0, 0, 0)
+              setDate(withOldTime)
+              apply(withOldTime, time)
+            }}
+            initialFocus
+          />
+          <div className="mt-3 grid grid-cols-[auto_1fr] items-center gap-3">
+            <Label className="text-xs text-muted-foreground">Heure</Label>
+            <Input
+              type="time"
+              step={300} // 5 minutes
+              value={time}
+              onChange={(e) => {
+                const t = e.target.value || "00:00"
+                setTime(t)
+                apply(undefined, t)
+              }}
+            />
+          </div>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                const now = new Date()
+                setDate(now)
+                const t = format(now, "HH:mm")
+                setTime(t)
+                onChange(toIsoLocal(now))
+              }}
+            >
+              Maintenant
+            </Button>
+            <Button type="button" onClick={() => setOpen(false)}>
+              Valider
+            </Button>
+          </div>
+        </div>
       </PopoverContent>
     </Popover>
   )
@@ -686,7 +766,7 @@ export default function AddEditReservationDialog({
         route: { from: "", to: "" },
         passenger: { name: "", phone: "" },
         busIds: [],
-        tripDate: new Date().toISOString().slice(0, 10),
+        tripDate: toIsoLocal(new Date()),
       }
     )
     setBusIds((editing?.busIds as string[]) ?? [])
@@ -697,7 +777,6 @@ export default function AddEditReservationDialog({
 
     // hydrate event selector from existing row (fallback to "none")
     setEventType(((editing as any)?.event as EventType) ?? "none")
-
   }, [editing, open])
 
   function setField<K extends keyof Reservation>(key: K, val: Reservation[K]) {
@@ -799,11 +878,10 @@ export default function AddEditReservationDialog({
     const fromLabel = waypoints[0]?.label || "Départ"
     const toLabel   = waypoints[waypoints.length - 1]?.label || "Arrivée"
 
-    // Build the UI object you already use (if needed elsewhere)
     const uiPayload: UIReservation = {
       id,
       code,
-      tripDate: String(form.tripDate ?? ""),
+      tripDate: String(form.tripDate ?? toIsoLocal(new Date())), // full ISO datetime
       route: { from: fromLabel, to: toLabel },
       passenger: {
         name: String(form.passenger?.name ?? ""),
@@ -812,7 +890,7 @@ export default function AddEditReservationDialog({
       },
       seats: isNaN(seats) ? 1 : seats,
       busIds,
-      event: eventType, // <-- ensure UI object carries event
+      event: eventType,
       priceTotal: isNaN(priceTotal) ? 0 : priceTotal,
       status: (form.status as Reservation["status"]) ?? "pending",
       createdAt: editing?.createdAt ?? new Date().toISOString(),
@@ -822,43 +900,34 @@ export default function AddEditReservationDialog({
 
     // Map to API shape (snake_case) for Laravel
     const apiPayload: any = {
-      // only send code if you want to set/update it
       code: code || undefined,
-
-      trip_date: uiPayload.tripDate || undefined,
+      trip_date: uiPayload.tripDate || undefined, // full ISO datetime
       from_location: fromLabel || undefined,
       to_location: toLabel || undefined,
 
       passenger_name: uiPayload.passenger?.name || undefined,
       passenger_phone: uiPayload.passenger?.phone || undefined,
-      passenger_email: uiPayload.passenger?.email ?? undefined, // send undefined to omit, or null to clear
+      passenger_email: uiPayload.passenger?.email ?? undefined,
 
       seats: uiPayload.seats,
-      price_total: uiPayload.priceTotal ?? null, // nullable numeric
+      price_total: uiPayload.priceTotal ?? null,
 
-      status: uiPayload.status, // 'pending' | 'confirmed' | 'cancelled'
+      status: uiPayload.status,
 
       waypoints: waypoints?.length ? waypoints.map(w => ({
         lat: w.lat,
         lng: w.lng,
         label: w.label || null,
-      })) : undefined, // omit if not provided (you already guard for >=2)
+      })) : undefined,
 
       distance_km: (routeKm ?? havKm) ?? null,
-
-      bus_ids: busIds?.length ? busIds : null, // nullable array
-
-      event: eventType, // correct spelling
+      bus_ids: busIds?.length ? busIds : null,
+      event: eventType,
     }
 
-    // Remove undefined keys (keep nulls, validator uses nullable)
     Object.keys(apiPayload).forEach(k => apiPayload[k] === undefined && delete apiPayload[k])
 
-    // Now call your API here (create/update). Example:
-    // if (editing) await api.patch(`/reservations/${id}`, apiPayload)
-    // else await api.post(`/reservations`, apiPayload)
-
-    onSubmit(uiPayload) // if your parent expects the UI object
+    onSubmit(uiPayload)
     onOpenChange(false)
     toast(editing ? "Réservation mise à jour." : "Réservation ajoutée.")
   }
@@ -891,8 +960,8 @@ export default function AddEditReservationDialog({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label>Date du trajet</Label>
-                <TripDatePicker
-                  value={form.tripDate ?? ""}
+                <TripDateTimePicker
+                  valueIso={form.tripDate ?? ""}
                   onChange={(iso) => setField("tripDate", iso as any)}
                 />
               </div>

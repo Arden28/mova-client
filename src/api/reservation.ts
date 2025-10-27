@@ -15,18 +15,16 @@ export type WaypointDto = {
 export type ReservationDto = {
   id: string // uuid
   code?: string | null
-  trip_date: string // YYYY-MM-DD
+  trip_date: string // ISO-8601 datetime (e.g. 2025-03-01T09:30:00+01:00)
   from_location: string
   to_location: string
 
-  // Some endpoints may send passenger as a nested object...
   passenger?: {
     name: string | null
     phone: string | null
     email?: string | null
   } | null
 
-  // ...while others flatten these on the resource
   passenger_name?: string | null
   passenger_phone?: string | null
   passenger_email?: string | null
@@ -74,7 +72,8 @@ export type UIWaypoint = { lat: number; lng: number; label?: string }
 export type UIReservation = {
   id: string
   code?: string
-  tripDate: string // YYYY-MM-DD
+  /** Full ISO-8601 datetime (e.g. 2025-03-01T09:30:00+01:00) */
+  tripDate: string
   route: UIRoute
   passenger: UIPassenger
   seats: number
@@ -102,7 +101,7 @@ export function toUIReservation(r: ReservationDto): UIReservation {
   return {
     id: String(r.id),
     code: r.code ?? undefined,
-    tripDate: r.trip_date,
+    tripDate: r.trip_date, // full ISO datetime from backend
     route: { from: r.from_location, to: r.to_location },
     passenger: {
       name: name ?? "",
@@ -120,7 +119,6 @@ export function toUIReservation(r: ReservationDto): UIReservation {
         label: w.label ?? undefined,
       })) ?? undefined,
     distanceKm: r.distance_km ?? undefined,
-    // Keep original type but stringify to maintain UI consistency, if you need that:
     busIds: r.buses?.map(b => (typeof b.id === "number" ? b.id : String(b.id))) ?? undefined,
     createdAt: r.created_at ?? undefined,
     updatedAt: r.updated_at ?? undefined,
@@ -144,6 +142,10 @@ function numOrNull(v: unknown): number | null {
 function isIsoDate(v?: string) {
   return !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
 }
+function isIsoDateTime(v?: string) {
+  // basic ISO 8601 datetime with optional seconds & offset (e.g. 2025-03-01T09:30[:ss][Z|±hh:mm])
+  return !!v && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?([+-]\d{2}:\d{2}|Z)?$/.test(v)
+}
 const isPositiveInt = (v: unknown) => {
   const n = Number(v)
   return Number.isInteger(n) && n > 0
@@ -152,6 +154,7 @@ const isPositiveInt = (v: unknown) => {
 /**
  * Build a backend-compliant payload.
  * Matches UpdateReservationRequest:
+ * - trip_date: ISO-8601 datetime
  * - event: 'none'|'wedding'|'funeral'|'church'
  * - bus_ids: integer[] (nullable/array)
  */
@@ -164,9 +167,11 @@ function toPayload(body: PartialUIReservation): Record<string, unknown> {
     p.code = v !== null ? v : null
   }
 
-  // trip_date (required if present): only send valid dates
+  // trip_date (required if present): send full ISO datetime when valid
   if (body.tripDate !== undefined) {
-    if (isIsoDate(body.tripDate)) p.trip_date = body.tripDate
+    if (isIsoDateTime(body.tripDate) || isIsoDate(body.tripDate)) {
+      p.trip_date = body.tripDate
+    }
   }
 
   // route fields (required if present): only send when non-empty
@@ -186,7 +191,6 @@ function toPayload(body: PartialUIReservation): Record<string, unknown> {
     if (name !== null) p.passenger_name = name
     if (phone !== null) p.passenger_phone = phone
     if (body.passenger?.email !== undefined) {
-      // email is nullable → allow explicit null to clear it
       p.passenger_email = email
     }
   }
@@ -210,8 +214,7 @@ function toPayload(body: PartialUIReservation): Record<string, unknown> {
 
   // event (required if present): only send valid values
   if (body.event !== undefined) {
-    if (body.event) p.event = body.event // 'none' | 'wedding' | 'funeral' | 'church'
-    // else omit (don't send null, backend has 'required' when present)
+    if (body.event) p.event = body.event
   }
 
   // waypoints: nullable|array|min:2 with required_with for items
@@ -251,7 +254,6 @@ export type ListParams = {
   status?: ReservationStatus | ""
   date_from?: string // YYYY-MM-DD
   date_to?: string   // YYYY-MM-DD
-  // If you filter by a single bus, pass the INT id. We'll forward as-is.
   bus_id?: number | string
   with?: ("buses")[]
   trashed?: "with" | "only" | "without"
@@ -265,7 +267,6 @@ function normalizeListParams(p?: ListParams) {
   if (!p) return undefined
   const out: Record<string, unknown> = { ...p }
   if (p.with && p.with.length) out.with = p.with.join(",")
-  // Ensure numeric bus_id if it looks numeric
   if (p.bus_id !== undefined) {
     const n = Number(p.bus_id)
     out.bus_id = Number.isFinite(n) ? n : p.bus_id

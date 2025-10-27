@@ -95,10 +95,10 @@ export function toUIBus(b: BusDto): UIBus {
     insuranceValidUntil: b.insurance_valid_until ?? undefined,
     operatorId: b.operator_id ?? null,
     assignedDriverId: b.assigned_driver_id ?? null,
-    assignedConductorId: b.assigned_conductor_id ?? null, // 👈
+    assignedConductorId: b.assigned_conductor_id ?? null,
     operatorName: b.operator?.name ?? undefined,
     driverName: b.driver?.name ?? undefined,
-    conductorName: b.conductor?.name ?? undefined, // 👈
+    conductorName: b.conductor?.name ?? undefined,
     createdAt: b.created_at ?? undefined,
     updatedAt: b.updated_at ?? undefined,
   }
@@ -153,7 +153,7 @@ function toPayload(body: PartialUIBus): Record<string, unknown> {
   // UUIDs
   if (body.operatorId !== undefined) p.operator_id = asStringOrNull(body.operatorId)
   if (body.assignedDriverId !== undefined) p.assigned_driver_id = asStringOrNull(body.assignedDriverId)
-  if (body.assignedConductorId !== undefined) p.assigned_conductor_id = asStringOrNull(body.assignedConductorId) // 👈
+  if (body.assignedConductorId !== undefined) p.assigned_conductor_id = asStringOrNull(body.assignedConductorId)
 
   return p
 }
@@ -166,12 +166,12 @@ export type ListParams = {
   type?: BusType | ""
   operator_id?: string | ""     // UUID
   driver_id?: string | ""       // UUID
-  conductor_id?: string | ""    // UUID 👈 (if your API supports)
+  conductor_id?: string | ""    // UUID
   year_min?: number
   year_max?: number
   service_before?: string       // YYYY-MM-DD
   insurance_before?: string     // YYYY-MM-DD
-  with?: ("operator" | "driver" | "conductor")[] // 👈 include conductor
+  with?: ("operator" | "driver" | "conductor")[]
   order_by?: "created_at" | "updated_at" | "plate" | "status" | "type" | "year" | "mileage_km"
   order_dir?: "asc" | "desc"
   page?: number
