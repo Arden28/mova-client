@@ -505,6 +505,7 @@ export default function AddEditReservationDialog({
 
   const [vehicleType, setVehicleType] = React.useState<VehicleType>("hiace")
   const [eventType, setEventType] = React.useState<EventType>("none")
+  const [quoteCurrency, setQuoteCurrency] = React.useState<string>("FCFA")
   const [quoting, setQuoting] = React.useState(false)
 
   const busOptions = React.useMemo<MultiSelectOption[]>(() => {
@@ -566,29 +567,49 @@ export default function AddEditReservationDialog({
   const distanceKmDisplay = routeKm ?? havKm
   const busCount = busIds.length || 1
 
+
   React.useEffect(() => {
     let cancel = false
-    const canQuote =
-      vehicleType &&
-      eventType !== undefined &&
-      Number.isFinite(distanceKmDisplay) &&
-      (distanceKmDisplay ?? 0) >= 0 &&
-      busCount >= 1
+
+    const distanceOk = Number.isFinite(distanceKmDisplay) && (distanceKmDisplay ?? 0) >= 0
+    const canQuote = eventType !== undefined && distanceOk && (busIds.length > 0 || !!vehicleType)
 
     if (!canQuote) return
 
     const t = setTimeout(async () => {
       setQuoting(true)
       try {
-        const payload = {
-          vehicle_type: vehicleType,
-          distance_km: Number(distanceKmDisplay ?? 0),
-          event: eventType,
-          buses: busCount,
+        // Prefer mixed-vehicle path when user selected specific buses
+        let payload:
+          | { bus_ids: number[]; distance_km: number; event: EventType }
+          | { vehicle_type: VehicleType; distance_km: number; event: EventType; buses: number }
+
+        if (busIds.length > 0) {
+          // Convert IDs to numbers if possible; leave as-is if not
+          const ids = busIds.map((id) => {
+            const n = Number(id)
+            return Number.isFinite(n) ? n : (id as unknown as number)
+          })
+          payload = {
+            bus_ids: ids,
+            distance_km: Number(distanceKmDisplay ?? 0),
+            event: eventType,
+          }
+        } else {
+          // Legacy single-type path
+          const busesCount = Math.max(1, Number(busCount || 1))
+          payload = {
+            vehicle_type: vehicleType,
+            distance_km: Number(distanceKmDisplay ?? 0),
+            event: eventType,
+            buses: busesCount,
+          }
         }
+
         const res = await api.post<QuoteResponse, typeof payload>("/quote", payload)
         if (cancel) return
         setField("priceTotal", res.data.client_payable as any)
+        if (res.data?.currency) setQuoteCurrency(res.data.currency)
       } catch (e: any) {
         if (!cancel) toast.error(e?.message ?? "Échec du calcul du tarif.")
       } finally {
@@ -600,7 +621,8 @@ export default function AddEditReservationDialog({
       cancel = true
       clearTimeout(t)
     }
-  }, [vehicleType, eventType, distanceKmDisplay, busCount]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [vehicleType, eventType, distanceKmDisplay, busIds]) // eslint-disable-line react-hooks/exhaustive-deps
+
 
   function handleSubmit() {
     
@@ -832,6 +854,9 @@ export default function AddEditReservationDialog({
               <p className="text-xs text-muted-foreground">
                 Les bus proviennent de votre parc (libellés = plaques).
               </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Si vous sélectionnez des bus, le calcul utilisera leurs types réels (mix Hiace/Coaster).
+              </p>
             </div>
           </div>
 
@@ -857,6 +882,7 @@ export default function AddEditReservationDialog({
                   className="h-9 rounded-md border bg-background px-3 text-sm capitalize"
                   value={vehicleType}
                   onChange={(e) => setVehicleType(e.target.value as VehicleType)}
+                  disabled={busIds.length > 0}
                 >
                   <option value="hiace">hiace</option>
                   <option value="coaster">coaster</option>
@@ -916,7 +942,7 @@ export default function AddEditReservationDialog({
                     readOnly
                   />
                   <div className="pointer-events-none absolute inset-y-0 right-0 grid w-16 place-items-center text-xs text-muted-foreground">
-                    FCFA
+                    {quoteCurrency}
                   </div>
                 </div>
               </div>

@@ -19,7 +19,7 @@ import type { FilterConfig, GroupByConfig } from "@/components/data-table"
 import AddEditBusDialog from "@/components/bus/AddEditBusDialog"
 import ImportDialog from "@/components/common/ImportDialog"
 
-import busApi, { type UIBus, type BusStatus } from "@/api/bus"
+import busApi, { type UIBus, type BusStatus, type BusType } from "@/api/bus"
 import peopleApi, { type Person } from "@/api/people"
 import { ApiError } from "@/api/apiService"
 
@@ -41,14 +41,29 @@ const BUS_TYPE_LABELS: Record<string, string> = {
   minibus: "Minibus",
   bus: "Bus",
 }
-const prettyType = (t?: string | null) => {
+const prettyType = (t?: string | BusType | null) => {
   if (!t) return "—"
   const key = String(t).toLowerCase()
   if (BUS_TYPE_LABELS[key]) return BUS_TYPE_LABELS[key]
-  // Title-case fallback: "school_bus" -> "School Bus"
-  return key
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (m) => m.toUpperCase())
+  return key.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
+}
+
+/* --------------------- typing helpers --------------------- */
+
+const ALLOWED_BUS_TYPES = new Set<BusType>([
+  "sprinter",
+  "coach",
+  "minibus",
+  "hiace",
+  "coaster",
+  "bus",
+])
+
+/** Normalize an arbitrary string to a BusType (or undefined if invalid). */
+function toBusType(v?: string | null): BusType | undefined {
+  if (!v) return undefined
+  const key = v.toLowerCase() as BusType
+  return ALLOWED_BUS_TYPES.has(key) ? key : undefined
 }
 
 /* --------------------- helpers --------------------- */
@@ -224,16 +239,18 @@ export default function BusesPage() {
     []
   )
 
-  // Build Type filter options dynamically from current data
+  // Build Type filter options dynamically from current data (typed as BusType)
   const typeFilterOptions = React.useMemo(() => {
-    const set = new Set<string>()
+    const set = new Set<BusType>()
     rows.forEach((b) => {
-      if (b.type) set.add(String(b.type))
+      if (b.type) set.add(b.type as BusType)
     })
-    return Array.from(set).sort((a, b) => prettyType(a).localeCompare(prettyType(b), "fr")).map((v) => ({
-      value: v,
-      label: prettyType(v),
-    }))
+    return Array.from(set)
+      .sort((a, b) => prettyType(a).localeCompare(prettyType(b), "fr"))
+      .map((v) => ({
+        value: v,
+        label: prettyType(v),
+      }))
   }, [rows])
 
   const filters = React.useMemo<FilterConfig<UIBus>[]>(() => {
@@ -452,7 +469,7 @@ export default function BusesPage() {
           if (!plate) return null
 
           const label = (norm(raw["label"]) as string | undefined) ?? undefined
-          const typeVal = (norm(raw["type"]) as string | undefined)?.toLowerCase()
+          const typeVal = toBusType(norm(raw["type"]) as string | undefined)
 
           const model = (norm(raw["model"]) as string | undefined) ?? undefined
 
@@ -487,8 +504,8 @@ export default function BusesPage() {
           const bus: UIBus = {
             id: uuid(),
             plate,
-            label,           // NEW
-            type: typeVal,   // NEW (raw English-ish value, display is prettified)
+            label,           // optional UI label
+            type: typeVal,   // BusType | undefined
             model,
             capacity: capacityNum,
             year: yearNum,
