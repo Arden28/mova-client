@@ -73,6 +73,7 @@ const PAYMENT_LABELS: Record<PayState, string> = {
 }
 
 const EVENT_LABELS: Record<EventType, string> = {
+  none: "Aucun",
   school_trip: "Sortie scolaire",
   university_trip: "Voyage universitaire",
   educational_tour: "Visite pédagogique",
