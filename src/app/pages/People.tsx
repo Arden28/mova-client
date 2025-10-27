@@ -34,16 +34,47 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import peopleApi, { type Person, type PersonRole } from "@/api/people"
 import { ApiError } from "@/api/apiService"
 
+/* -------------------------- Role normalization -------------------------- */
+
+// Accept common English/French/typo variants and normalize.
+function normalizeRole(val: unknown): PersonRole | undefined {
+  const s = String(val ?? "").trim().toLowerCase()
+
+  switch (s) {
+    // driver
+    case "driver":
+    case "chauffeur":
+      return "driver"
+
+    // owner
+    case "owner":
+    case "proprietaire":
+    case "propriétaire":
+      return "owner"
+
+    // conductor (receveur / contrôleur variants)
+    case "conductor":
+    case "receveur":
+    case "controleur":
+    case "contrôleur":
+    case "controller":
+      return "conductor"
+
+    default:
+      return undefined
+  }
+}
+
 /* -------------------------- i18n helpers -------------------------- */
 
 const ROLE_LABELS: Record<PersonRole, string> = {
   driver: "Chauffeur",
   owner: "Propriétaire",
-  conductor: "Receveur",
+  conductor: "Contrôleur",
 }
 const frRole = (r?: PersonRole | null) => (r ? (ROLE_LABELS[r] ?? r) : "—")
 
-type PersonStatus = NonNullable<Person["status"]> // expect "active" | "inactive" in your API
+type PersonStatus = NonNullable<Person["status"]>
 const STATUS_LABELS: Partial<Record<PersonStatus, string>> = {
   active: "Actif",
   inactive: "Inactif",
@@ -80,7 +111,9 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
   const [form, setForm] = React.useState<Partial<Person>>({})
 
   React.useEffect(() => {
-    setForm(editing ?? { role: "driver" })
+    // Normalize any incoming role into the select's expected values
+    const norm = normalizeRole((editing as any)?.role) ?? (editing?.role as PersonRole) ?? "driver"
+    setForm(editing ? { ...editing, role: norm } : { role: "driver" })
   }, [editing, open])
 
   function set<K extends keyof Person>(key: K, val: Person[K]) {
@@ -88,7 +121,7 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
   }
 
   function handleSubmit() {
-    const role = (form.role as PersonRole) ?? "driver"
+    const role = normalizeRole((form.role as any)) ?? "driver"
     const payload: Person = {
       id: editing?.id ?? crypto.randomUUID(),
       role,
@@ -137,15 +170,17 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
             <Select
               value={(form.role as PersonRole) ?? "driver"}
               onValueChange={(v) => {
-                set("role", v as PersonRole)
-                if (v !== "driver") set("licenseNo", undefined as any) // clear permis when not driver
+                // Keep form normalized as the user changes the select
+                const nr = normalizeRole(v) ?? "driver"
+                set("role", nr as PersonRole)
+                if (nr !== "driver") set("licenseNo", undefined as any)
               }}
             >
               <SelectTrigger><SelectValue placeholder="Sélectionner un rôle" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="driver">Chauffeur</SelectItem>
                 <SelectItem value="owner">Propriétaire</SelectItem>
-                <SelectItem value="conductor">Receveur</SelectItem>
+                <SelectItem value="conductor">Contrôleur</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -198,7 +233,13 @@ export default function PeoplePage() {
     try {
       setLoading(true)
       const res = await peopleApi.list({ per_page: 100 })
-      setRows(res.data.rows)
+      // Normalize roles coming from backend variants (e.g., "receveur", "contrôleur", etc.)
+      const normalized = (res.data.rows ?? []).map((r: any) => {
+        const rawRole = r.role ?? r.type ?? r.role_name
+        const nr = normalizeRole(rawRole) ?? normalizeRole(String(rawRole || ""))
+        return { ...r, role: nr ?? r.role } as Person
+      })
+      setRows(normalized)
     } catch (e) {
       showValidationErrors(e)
     } finally {
@@ -224,13 +265,12 @@ export default function PeoplePage() {
     {
       id: "role",
       label: "Rôle",
-      // Values remain English; labels are French.
       options: [
         { label: ROLE_LABELS.driver, value: "driver" },
         { label: ROLE_LABELS.owner, value: "owner" },
         { label: ROLE_LABELS.conductor, value: "conductor" },
       ],
-      accessor: (p) => p.role ?? "",
+      accessor: (p) => normalizeRole(p.role) ?? "",
       defaultValue: "",
     },
     {
@@ -268,7 +308,9 @@ export default function PeoplePage() {
           <div className="grid gap-2 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Rôle :</span>
-              <Badge variant="outline" className="px-1.5 capitalize">{frRole(p.role)}</Badge>
+              <Badge variant="outline" className="px-1.5 capitalize">
+                {frRole(normalizeRole(p.role) ?? (p.role as PersonRole))}
+              </Badge>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Statut :</span>
@@ -283,11 +325,14 @@ export default function PeoplePage() {
       {
         accessorKey: "role",
         header: "Rôle",
-        cell: ({ row }) => (
-          <Badge variant="outline" className="px-1.5 capitalize">
-            {frRole(row.original.role)}
-          </Badge>
-        ),
+        cell: ({ row }) => {
+          const r = normalizeRole(row.original.role) ?? (row.original.role as PersonRole | undefined)
+          return (
+            <Badge variant="outline" className="px-1.5 capitalize">
+              {frRole(r)}
+            </Badge>
+          )
+        },
       },
       {
         accessorKey: "status",
@@ -363,8 +408,7 @@ export default function PeoplePage() {
     {
       id: "role",
       label: "Rôle",
-      // Show French label in group header
-      accessor: (r: Person) => frRole(r.role),
+      accessor: (r: Person) => frRole(normalizeRole(r.role) ?? (r.role as PersonRole)),
       sortGroups: (a, b) => a.localeCompare(b, "fr"),
     },
     {
@@ -473,9 +517,9 @@ export default function PeoplePage() {
           const name = String(norm(raw.name) ?? "")
           if (!name) return null
 
-          let role = String(norm(raw.role) ?? "").toLowerCase()
-          const allowed = new Set<PersonRole>(["driver", "owner", "conductor"])
-          if (!allowed.has(role as PersonRole)) role = "driver"
+          // Normalize any role variants on import
+          const rawRole = norm(raw.role) ?? ""
+          const role = normalizeRole(rawRole) ?? "driver"
 
           const phone = (norm(raw.phone) ?? undefined) as string | undefined
           const email = (norm(raw.email) ?? undefined) as string | undefined
@@ -483,7 +527,7 @@ export default function PeoplePage() {
 
           const person: Person = {
             id: crypto.randomUUID(),
-            role: role as PersonRole,
+            role,
             name,
             phone,
             email,
