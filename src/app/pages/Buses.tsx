@@ -1,4 +1,3 @@
-// src/pages/Buses.tsx
 "use client"
 
 import * as React from "react"
@@ -24,7 +23,7 @@ import busApi, { type UIBus, type BusStatus } from "@/api/bus"
 import peopleApi, { type Person } from "@/api/people"
 import { ApiError } from "@/api/apiService"
 
-/* --------------------- i18n helpers --------------------- */
+/* --------------------- i18n / pretty label helpers --------------------- */
 
 const BUS_STATUS_LABELS: Record<Exclude<BusStatus, undefined>, string> = {
   active: "Actif",
@@ -32,6 +31,25 @@ const BUS_STATUS_LABELS: Record<Exclude<BusStatus, undefined>, string> = {
   maintenance: "Maintenance",
 }
 const frBusStatus = (s?: UIBus["status"] | null) => (s ? (BUS_STATUS_LABELS[s] ?? s) : "—")
+
+// Common known types; fallback prettifies unknowns (title case)
+const BUS_TYPE_LABELS: Record<string, string> = {
+  hiace: "Hiace",
+  coaster: "Coaster",
+  sprinter: "Sprinter",
+  coach: "Autocar",
+  minibus: "Minibus",
+  bus: "Bus",
+}
+const prettyType = (t?: string | null) => {
+  if (!t) return "—"
+  const key = String(t).toLowerCase()
+  if (BUS_TYPE_LABELS[key]) return BUS_TYPE_LABELS[key]
+  // Title-case fallback: "school_bus" -> "School Bus"
+  return key
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase())
+}
 
 /* --------------------- helpers --------------------- */
 
@@ -129,6 +147,12 @@ export default function BusesPage() {
               {getPersonName(b.assignedDriverId, b.driverName)}
             </div>
             <div>
+              <span className="text-muted-foreground">Type :</span> {prettyType(b.type)}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Libellé :</span> {b.label ?? "—"}
+            </div>
+            <div>
               <span className="text-muted-foreground">Modèle :</span> {b.model ?? "—"}
             </div>
             <div>
@@ -172,6 +196,27 @@ export default function BusesPage() {
         enableSorting: false,
       },
 
+      // NEW: Type column (pretty label)
+      {
+        accessorKey: "type",
+        header: "Type",
+        cell: ({ row }) => (
+          <Badge variant="outline" className="px-1.5 capitalize">
+            {prettyType(row.original.type)}
+          </Badge>
+        ),
+      },
+
+      // NEW: Label column (e.g., "Hiace", "Coaster")
+      {
+        accessorKey: "label",
+        header: "Libellé",
+        cell: ({ row }) => (
+          <span className="block max-w-[200px] truncate">{row.original.label ?? "—"}</span>
+        ),
+        enableSorting: false,
+      },
+
       {
         accessorKey: "status",
         header: "Statut",
@@ -186,14 +231,25 @@ export default function BusesPage() {
 
   const searchable = React.useMemo(
     () => ({
-      placeholder: "Rechercher immatriculation, modèle…",
-      fields: ["plate", "model"] as (keyof UIBus)[],
+      placeholder: "Rechercher immatriculation, modèle, type, libellé…",
+      fields: ["plate", "model", "type", "label"] as (keyof UIBus)[],
     }),
     []
   )
 
+  // Build Type filter options dynamically from current data
+  const typeFilterOptions = React.useMemo(() => {
+    const set = new Set<string>()
+    rows.forEach((b) => {
+      if (b.type) set.add(String(b.type))
+    })
+    return Array.from(set).sort((a, b) => prettyType(a).localeCompare(prettyType(b), "fr")).map((v) => ({
+      value: v,
+      label: prettyType(v),
+    }))
+  }, [rows])
+
   const filters = React.useMemo<FilterConfig<UIBus>[]>(() => {
-    // Keep values in English; display labels in French.
     const statusOptions = (["active", "inactive", "maintenance"] as const).map((v) => ({
       value: v,
       label: BUS_STATUS_LABELS[v],
@@ -206,21 +262,27 @@ export default function BusesPage() {
         accessor: (b) => b.status ?? "",
         defaultValue: "",
       },
+      {
+        id: "type",
+        label: "Type",
+        options: typeFilterOptions,
+        accessor: (b) => b.type ?? "",
+        defaultValue: "",
+      },
     ]
-  }, [])
+  }, [typeFilterOptions])
 
   const groupBy: GroupByConfig<UIBus>[] = [
     {
       id: "type",
       label: "Type de bus",
-      accessor: (r: UIBus) => r.type ?? "—",
+      accessor: (r: UIBus) => prettyType(r.type),
+      sortGroups: (a, b) => a.localeCompare(b, "fr"),
     },
     {
       id: "owner",
       label: "Propriétaire",
-      // Group label uses owner's *name*; underlying data keeps IDs/values untouched.
       accessor: (r: UIBus) => getPersonName(r.operatorId, r.operatorName),
-      // Optional: sort alphabetically by owner name
       sortGroups: (a, b) => a.localeCompare(b, "fr"),
     },
   ]
@@ -335,10 +397,10 @@ export default function BusesPage() {
       <AddEditBusDialog
         open={open}
         onOpenChange={setOpen}
-        editing={editing as any} // dialog shape matches used keys: plate, capacity, model, year, status, operatorId, assignedDriverId
+        editing={editing as any} // dialog shape matches used keys
         people={people}
         onSubmit={async (bus: any) => {
-          // bus has UIBus-compatible fields
+          // bus has UIBus-compatible fields (including optional type/label)
           if (editing) {
             const prev = rows
             setRows((r) => r.map((x) => (x.id === bus.id ? { ...x, ...bus } as UIBus : x)))
@@ -375,6 +437,8 @@ export default function BusesPage() {
         description="Chargez un CSV/Excel, mappez les colonnes, puis validez l'import."
         fields={[
           { key: "plate", label: "Immatriculation", required: true },
+          { key: "label", label: "Libellé (ex: Hiace, Coaster)" }, // NEW
+          { key: "type", label: "Type (ex: hiace, coaster)" },      // NEW
           { key: "model", label: "Modèle" },
           { key: "capacity", label: "Capacité" },
           { key: "year", label: "Année" },
@@ -384,6 +448,8 @@ export default function BusesPage() {
         ]}
         sampleHeaders={[
           "plate",
+          "label",
+          "type",
           "model",
           "capacity",
           "year",
@@ -398,6 +464,9 @@ export default function BusesPage() {
 
           const plate = String(norm(raw["plate"]) ?? "").toUpperCase()
           if (!plate) return null
+
+          const label = (norm(raw["label"]) as string | undefined) ?? undefined
+          const typeVal = (norm(raw["type"]) as string | undefined)?.toLowerCase()
 
           const model = (norm(raw["model"]) as string | undefined) ?? undefined
 
@@ -417,7 +486,7 @@ export default function BusesPage() {
           const toPersonId = (v: unknown): Person["id"] | undefined => {
             if (v === null || v === undefined) return undefined
             const s = String(v).trim()
-            // Prefer id match; fall back to name in our cached list
+            // Prefer id match; fall back to exact name in our cached list
             if (personById.has(s as Person["id"])) return s as Person["id"]
             const lower = s.toLowerCase()
             for (const p of people) {
@@ -432,6 +501,8 @@ export default function BusesPage() {
           const bus: UIBus = {
             id: uuid(),
             plate,
+            label,           // NEW
+            type: typeVal,   // NEW (raw English-ish value, display is prettified)
             model,
             capacity: capacityNum,
             year: yearNum,
