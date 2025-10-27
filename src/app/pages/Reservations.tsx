@@ -113,6 +113,8 @@ const frPayment = (p: PayState) => PAYMENT_LABELS[p] ?? p
 
 /* ------------------------------- utilities -------------------------------- */
 
+const TZ = "Africa/Nairobi"
+
 const fmtMoney = (v?: number) => (typeof v === "number" ? `${v.toLocaleString("fr-FR")} FCFA` : "—")
 
 const shortDatetime = (iso?: string) => {
@@ -122,10 +124,41 @@ const shortDatetime = (iso?: string) => {
     return new Intl.DateTimeFormat("fr-FR", {
       dateStyle: "medium",
       timeStyle: "short",
-      timeZone: "Europe/Paris",
+      timeZone: TZ,
     }).format(d)
   } catch {
     return iso
+  }
+}
+
+// For group header labels (e.g., "lundi 27 octobre 2025")
+const dateHeaderLabel = (iso?: string) => {
+  if (!iso) return "—"
+  try {
+    const d = new Date(iso)
+    return new Intl.DateTimeFormat("fr-FR", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: TZ,
+    }).format(d)
+  } catch {
+    return iso
+  }
+}
+
+// For grouping key (YYYY-MM-DD)
+const dateKey = (iso?: string) => {
+  if (!iso) return "—"
+  try {
+    const d = new Date(iso)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    return `${y}-${m}-${day}`
+  } catch {
+    return "—"
   }
 }
 
@@ -168,6 +201,15 @@ export default function ReservationPage() {
   React.useEffect(() => {
     reload()
   }, [reload])
+
+  // Sort by createdAt desc (UUIDs → no natural order)
+  const sortedRows = React.useMemo(() => {
+    return [...rows].sort((a, b) => {
+      const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      return db - da
+    })
+  }, [rows])
 
   // Map busId -> plate label
   const busPlateById = React.useMemo(() => {
@@ -255,9 +297,7 @@ export default function ReservationPage() {
               <div className="grid gap-1">
                 <span className="text-muted-foreground">Trajet</span>
                 <div>{r.route?.from ?? "—"} → {r.route?.to ?? "—"}</div>
-                <div>
-                  Date : {r.tripDate ? new Date(r.tripDate).toLocaleDateString("fr-FR") : "—"}
-                </div>
+                <div>Date du trajet : {shortDatetime(r.tripDate)}</div>
                 {!!dist && <div>Distance : {dist.toLocaleString("fr-FR")} km</div>}
               </div>
 
@@ -277,6 +317,15 @@ export default function ReservationPage() {
           )
         },
       }),
+
+      // NEW: Date column (friendly day, month, year, time) from tripDate
+      {
+        accessorKey: "tripDate",
+        header: "Date",
+        cell: ({ row }) => <span>{shortDatetime(row.original.tripDate)}</span>,
+        // If your DataTable supports sorting with accessorFn:
+        accessorFn: (row) => (row.tripDate ? new Date(row.tripDate).getTime() : 0),
+      },
 
       // Passager
       {
@@ -362,7 +411,14 @@ export default function ReservationPage() {
     ]
   }, [busPlateById])
 
+  // Group by Date (by tripDate day)
   const groupBy: GroupByConfig<UIReservation>[] = [
+    {
+      id: "date",
+      label: "Date",
+      // Return a friendly label (e.g., "lundi 27 octobre 2025") — this is also the grouping key.
+      accessor: (r: UIReservation) => dateHeaderLabel(r.tripDate),
+    },
     {
       id: "client",
       label: "Clients",
@@ -371,7 +427,6 @@ export default function ReservationPage() {
     {
       id: "event",
       label: "Événements",
-      // Group label shown in French, value in data remains English.
       accessor: (r: UIReservation) => frEvent(r.event),
     },
   ]
@@ -389,9 +444,8 @@ export default function ReservationPage() {
         {!isCancelled && (
           <DropdownMenuItem
             onClick={async () => {
-              // optimistic status change
               const prev = rows
-              setRows((xs) => xs.map((x) => (x.id === r.id ? { ...x, status: "cancelled" } as UIReservation : x)))
+              setRows((xs) => xs.map((x) => x.id === r.id ? { ...x, status: "cancelled" } as UIReservation : x))
               try {
                 await reservationApi.setStatus(r.id, "cancelled")
                 toast("Réservation annulée")
@@ -411,7 +465,6 @@ export default function ReservationPage() {
         <DropdownMenuItem
           className="text-rose-600"
           onClick={async () => {
-            // optimistic delete (soft-delete)
             const prev = rows
             setRows((xs) => xs.filter((x) => x.id !== r.id))
             try {
@@ -430,7 +483,6 @@ export default function ReservationPage() {
     )
   }
 
-  // getRowId (typed id param if you use it elsewhere)
   const getRowId = (r: UIReservation) => String(r.id)
 
   return (
@@ -451,7 +503,7 @@ export default function ReservationPage() {
       </div>
 
       <DataTable<UIReservation>
-        data={rows}
+        data={sortedRows} // sorted by createdAt desc
         columns={columns}
         getRowId={getRowId}
         searchable={{ placeholder: "Rechercher code, passager, téléphone, départ, arrivée…", fields: ["code"] }}
@@ -464,7 +516,6 @@ export default function ReservationPage() {
         renderRowActions={renderRowActions}
         groupBy={groupBy}
         initialView="list"
-        // drawer={{ triggerField: "code" }}
         pageSizeOptions={[10, 20, 50]}
         onDeleteSelected={async (selected) => {
           if (selected.length === 0) return
@@ -487,15 +538,13 @@ export default function ReservationPage() {
         editing={editing}
         onSubmit={async (res) => {
           if (editing) {
-            // optimistic update
             const prev = rows
             setRows((xs) => xs.map((x) => (x.id === res.id ? { ...x, ...res } : x)))
             try {
               const apiRes = await reservationApi.update(res.id, res)
-              // server is source of truth (may compute fields)
               setRows((xs) => xs.map((x) => (x.id === res.id ? apiRes.data : x)))
               toast("Réservation mise à jour.")
-              await reload() // hard refresh to pick up related data/aggregates
+              await reload()
             } catch (e: any) {
               setRows(prev)
               toast.error(e?.message ?? "Échec de la mise à jour.")
@@ -503,25 +552,22 @@ export default function ReservationPage() {
               setEditing(null)
             }
           } else {
-            // optimistic add with temp id
             const tempId = res.id
-            const temp = { ...res }
+            const temp = { ...res, createdAt: new Date().toISOString() }
             setRows((xs) => [temp, ...xs])
             try {
               const apiRes = await reservationApi.create(res)
-              // swap temp by server row
               setRows((xs) => xs.map((x) => (x.id === tempId ? apiRes.data : x)))
               toast("Réservation ajoutée.")
-              await reload() // ensure joins/computed fields are fresh
+              await reload()
             } catch (e: any) {
               setRows((xs) => xs.filter((x) => x.id !== tempId))
               toast.error(e?.message ?? "Échec de la création.")
             }
           }
         }}
-        // The dialog only needs id + plate; we pass the full list anyway
-        trips={[]} // no trips API wired yet; keep empty array
-        buses={buses as unknown as any[]} // used for MultiSelect (id+plate)
+        trips={[]}
+        buses={buses as unknown as any[]}
       />
 
       <ImportDialog<UIReservation>
@@ -531,14 +577,14 @@ export default function ReservationPage() {
         description="Chargez un CSV/Excel, mappez les colonnes, puis validez l'import."
         fields={[
           { key: "code", label: "Code" },
-          { key: "tripDate", label: "Date du trajet (YYYY-MM-DD)", required: true },
+          { key: "tripDate", label: "Date du trajet (ISO datetime)", required: true },
           { key: "route.from", label: "Départ", required: true },
           { key: "route.to", label: "Arrivée", required: true },
           { key: "passenger.name", label: "Passager · Nom", required: true },
           { key: "passenger.phone", label: "Passager · Téléphone", required: true },
           { key: "passenger.email", label: "Passager · Email" },
           { key: "seats", label: "Sièges", required: true },
-          { key: "busIds", label: "Bus IDs (uuid,uuid,…)"},
+          { key: "busIds", label: "Bus IDs (uuid,uuid,…)" },
           { key: "priceTotal", label: "Total (FCFA)" },
           { key: "status", label: "Statut (pending/confirmed/cancelled)" },
         ]}
@@ -584,12 +630,10 @@ export default function ReservationPage() {
           return res
         }}
         onConfirm={async (imported) => {
-          // Optimistic batch add, then POST each
           const prev = rows
           setRows((xs) => [...imported, ...xs])
           try {
             const created = await Promise.all(imported.map((r) => reservationApi.create(r).then((x) => x.data)))
-            // Replace temps by server rows (match by code+tripDate+phone as fallback)
             const key = (r: UIReservation) =>
               r.code ? `code:${r.code}` : `npd:${(r.passenger?.name ?? "").toLowerCase()}|${r.passenger?.phone}|${r.tripDate}`
             setRows((xs) => {
