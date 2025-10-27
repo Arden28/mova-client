@@ -25,39 +25,14 @@ import { MapIcon } from "lucide-react"
 
 /* ------------------------------- i18n helpers ------------------------------ */
 
-// If you already declare EventType elsewhere, you can remove this local type.
 type EventType =
-  | "none"
-  | "school_trip"
-  | "university_trip"
-  | "educational_tour"
-  | "student_transport"
-  | "wedding"
-  | "funeral"
-  | "birthday"
-  | "baptism"
-  | "family_meeting"
-  | "conference"
-  | "seminar"
-  | "company_trip"
-  | "business_mission"
-  | "staff_shuttle"
-  | "football_match"
-  | "sports_tournament"
-  | "concert"
-  | "festival"
-  | "school_competition"
-  | "tourist_trip"
-  | "group_excursion"
-  | "pilgrimage"
-  | "site_visit"
-  | "airport_transfer"
-  | "election_campaign"
-  | "administrative_mission"
-  | "official_trip"
-  | "private_transport"
-  | "special_event"
-  | "simple_rental"
+  | "none" | "school_trip" | "university_trip" | "educational_tour" | "student_transport"
+  | "wedding" | "funeral" | "birthday" | "baptism" | "family_meeting"
+  | "conference" | "seminar" | "company_trip" | "business_mission" | "staff_shuttle"
+  | "football_match" | "sports_tournament" | "concert" | "festival" | "school_competition"
+  | "tourist_trip" | "group_excursion" | "pilgrimage" | "site_visit" | "airport_transfer"
+  | "election_campaign" | "administrative_mission" | "official_trip" | "private_transport"
+  | "special_event" | "simple_rental"
 
 const STATUS_LABELS: Record<ReservationStatus, string> = {
   pending: "En attente",
@@ -107,22 +82,34 @@ const EVENT_LABELS: Record<EventType, string> = {
   simple_rental: "Location simple",
 }
 
-// Safe labelers (fallback to the raw English value if unknown)
 const frStatus = (s?: ReservationStatus | null) => (s ? (STATUS_LABELS[s] ?? s) : "—")
 const frEvent = (e?: string | null) => (e ? (EVENT_LABELS[e as EventType] ?? e) : "—")
 const frPayment = (p: PayState) => PAYMENT_LABELS[p] ?? p
 
 /* ------------------------------- date utils -------------------------------- */
 
-// Parse "YYYY-MM-DD HH:mm:ss", "YYYY-MM-DDTHH:mm:ss", or "YYYY-MM-DD" as LOCAL time (no TZ shift)
-function parseLocalDateTime(input?: string): Date | null {
+/**
+ * Robust parser:
+ * - If string includes 'Z' or ±HH:MM, parse as ISO (UTC/offset) and let JS convert to local.
+ * - Else if it matches local "YYYY-MM-DD[ T]HH:mm[:ss][.ffffff]" → build a local Date (no TZ shift).
+ * - Else if only "YYYY-MM-DD" → local midnight of that day.
+ */
+function parseSmartDate(input?: string): Date | null {
   if (!input) return null
-  const s = input.replace("T", " ").replace("Z", "").trim()
-  const m = s.match(
-    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/
+  const s = input.trim()
+
+  // ISO with timezone (Z or ±HH:MM) → trust the offset
+  if (/[zZ]|[+\-]\d{2}:\d{2}$/.test(s)) {
+    const d = new Date(s)
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  // Local datetime: YYYY-MM-DD[ T]HH:mm[:ss][.ffffff]
+  const mLocal = s.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?$/
   )
-  if (m) {
-    const [, y, mo, d, hh = "00", mm = "00", ss = "00"] = m
+  if (mLocal) {
+    const [, y, mo, d, hh = "00", mm = "00", ss = "00"] = mLocal
     return new Date(
       Number(y),
       Number(mo) - 1,
@@ -132,24 +119,22 @@ function parseLocalDateTime(input?: string): Date | null {
       Number(ss)
     )
   }
-  // Fallback to native parsing
-  const dt = new Date(input)
-  return isNaN(dt.getTime()) ? null : dt
+
+  // Fallback
+  const d = new Date(s.replace("T", " "))
+  return isNaN(d.getTime()) ? null : d
 }
 
 const fmtMoney = (v?: number) => (typeof v === "number" ? `${v.toLocaleString("fr-FR")} FCFA` : "—")
 
 const friendlyDateTime = (iso?: string) => {
-  const d = parseLocalDateTime(iso)
+  const d = parseSmartDate(iso)
   if (!d) return "—"
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(d)
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(d)
 }
 
 const dateHeaderLabel = (iso?: string) => {
-  const d = parseLocalDateTime(iso)
+  const d = parseSmartDate(iso)
   if (!d) return "—"
   return d.toLocaleDateString("fr-FR", {
     weekday: "long",
@@ -160,18 +145,14 @@ const dateHeaderLabel = (iso?: string) => {
 }
 
 const shortDatetime = (iso?: string) => {
-  const d = parseLocalDateTime(iso)
+  const d = parseSmartDate(iso)
   if (!d) return "—"
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(d)
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(d)
 }
 
 /* ------------------------------- payments ---------------------------------- */
 
-function derivePaymentStatus(): PayState {
-  // No payments API yet — default to “none”
+function derivePaymentStatus(): "paid" | "pending" | "failed" | "none" {
   return "none"
 }
 
@@ -184,10 +165,8 @@ export default function ReservationPage() {
   const [openImport, setOpenImport] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
 
-  // Buses from API (for plates + dialog options)
   const [buses, setBuses] = React.useState<UIBus[]>([])
 
-  // Shared fetcher so we can refresh after add/edit/etc.
   const reload = React.useCallback(async () => {
     try {
       setLoading(true)
@@ -204,18 +183,14 @@ export default function ReservationPage() {
     }
   }, [])
 
-  // On mount: initial load
-  React.useEffect(() => {
-    reload()
-  }, [reload])
+  React.useEffect(() => { reload() }, [reload])
 
-  // Sort by createdAt DESC (UUIDs are not sortable by time)
+  // Sort by createdAt DESC
   const rowsSorted = React.useMemo(() => {
-    const by = (x?: string) => (x ? parseLocalDateTime(x)?.getTime() ?? 0 : 0)
+    const by = (x?: string) => (x ? parseSmartDate(x)?.getTime() ?? 0 : 0)
     return [...rows].sort((a, b) => by(b.createdAt) - by(a.createdAt))
   }, [rows])
 
-  // Map busId -> plate label
   const busPlateById = React.useMemo(() => {
     const m = new Map<string, string>()
     for (const b of buses) {
@@ -230,29 +205,15 @@ export default function ReservationPage() {
     fields: ["code", "passenger.name", "passenger.phone", "route.from", "route.to"] as (keyof UIReservation)[],
   }
 
-  // Build nice French options using the English enum values
   const statusOptions = (Object.keys(STATUS_LABELS) as ReservationStatus[]).map(v => ({
     label: STATUS_LABELS[v],
     value: v,
   }))
-  const eventOptions = (Object.entries(EVENT_LABELS) as [EventType, string][])
-    .map(([value, label]) => ({ value, label }))
+  const eventOptions = (Object.entries(EVENT_LABELS) as [EventType, string][]).map(([value, label]) => ({ value, label }))
 
   const filters: FilterConfig<UIReservation>[] = [
-    {
-      id: "status",
-      label: "Statut réservation",
-      options: statusOptions,
-      accessor: (r) => r.status ?? "",
-      defaultValue: "",
-    },
-    {
-      id: "event",
-      label: "Événement",
-      options: eventOptions,
-      accessor: (r) => r.event ?? "",
-      defaultValue: "",
-    },
+    { id: "status", label: "Statut réservation", options: statusOptions, accessor: (r) => r.status ?? "", defaultValue: "" },
+    { id: "event", label: "Événement", options: eventOptions, accessor: (r) => r.event ?? "", defaultValue: "" },
     {
       id: "payment",
       label: "Paiement",
@@ -262,234 +223,149 @@ export default function ReservationPage() {
         { label: PAYMENT_LABELS.failed, value: "failed" },
         { label: PAYMENT_LABELS.none, value: "none" },
       ],
-      accessor: () => derivePaymentStatus(),
+      accessor: () => "none",
       defaultValue: "",
     },
   ]
 
-  const columns = React.useMemo<ColumnDef<UIReservation>[]>(() => {
-    return [
-      // Drawer trigger on code
-      makeDrawerTriggerColumn<UIReservation>("code", {
-        triggerField: "code",
-        renderTitle: (r) => r.code,
-        renderBody: (r) => {
-          const pstat = derivePaymentStatus()
-          const busPlates = (r.busIds ?? []).map((id) => busPlateById.get(String(id)) ?? String(id))
-          const dist = (r as UIReservation & { distanceKm?: number }).distanceKm
-          return (
-            <div className="grid gap-2 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Statut :</span>
-                <Badge variant="outline" className="px-1.5 capitalize">{frStatus(r.status)}</Badge>
-              </div>
-
-              {!!r.event && (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Événement :</span>
-                  <Badge variant="outline" className="px-1.5">{frEvent(r.event)}</Badge>
-                </div>
-              )}
-
-              <div className="grid gap-1">
-                <span className="text-muted-foreground">Passager</span>
-                <div>Nom : {r.passenger?.name ?? "—"}</div>
-                <div>Tél. : {r.passenger?.phone ?? "—"}</div>
-                <div>Email : {r.passenger?.email ?? "—"}</div>
-              </div>
-
-              <div className="grid gap-1">
-                <span className="text-muted-foreground">Trajet</span>
-                <div>{r.route?.from ?? "—"} → {r.route?.to ?? "—"}</div>
-                <div>
-                  Date : {friendlyDateTime(r.tripDate)}
-                </div>
-                {!!dist && <div>Distance : {dist.toLocaleString("fr-FR")} km</div>}
-              </div>
-
-              <div className="grid gap-1">
-                <div>Sièges : {r.seats ?? "—"}</div>
-                <div>Total : {fmtMoney(r.priceTotal)}</div>
-                <div>Bus : {busPlates.length ? busPlates.join(", ") : "—"}</div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Paiement :</span>
-                <Badge variant="outline" className="px-1.5 capitalize">{frPayment(pstat)}</Badge>
-              </div>
-
-              <div className="text-xs text-muted-foreground">Créée le {shortDatetime(r.createdAt)}</div>
+  const columns = React.useMemo<ColumnDef<UIReservation>[]>(() => [
+    makeDrawerTriggerColumn<UIReservation>("code", {
+      triggerField: "code",
+      renderTitle: (r) => r.code,
+      renderBody: (r) => {
+        const pstat = derivePaymentStatus()
+        const busPlates = (r.busIds ?? []).map((id) => busPlateById.get(String(id)) ?? String(id))
+        const dist = (r as UIReservation & { distanceKm?: number }).distanceKm
+        return (
+          <div className="grid gap-2 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Statut :</span>
+              <Badge variant="outline" className="px-1.5 capitalize">{frStatus(r.status)}</Badge>
             </div>
-          )
-        },
-      }),
 
-      // Date (friendly)
-      {
-        id: "tripDate",
-        header: "Date",
-        cell: ({ row }) => friendlyDateTime(row.original.tripDate),
-      },
+            {!!r.event && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Événement :</span>
+                <Badge variant="outline" className="px-1.5">{frEvent(r.event)}</Badge>
+              </div>
+            )}
 
-      // Passager
-      {
-        id: "passenger",
-        header: "Passager",
-        cell: ({ row }) => (
-          <div className="max-w-[240px] truncate">
-            {row.original.passenger?.name ?? "—"}
-            <div className="text-xs text-muted-foreground">{row.original.passenger?.phone ?? "—"}</div>
+            <div className="grid gap-1">
+              <span className="text-muted-foreground">Passager</span>
+              <div>Nom : {r.passenger?.name ?? "—"}</div>
+              <div>Tél. : {r.passenger?.phone ?? "—"}</div>
+              <div>Email : {r.passenger?.email ?? "—"}</div>
+            </div>
+
+            <div className="grid gap-1">
+              <span className="text-muted-foreground">Trajet</span>
+              <div>{r.route?.from ?? "—"} → {r.route?.to ?? "—"}</div>
+              <div> Date : {friendlyDateTime(r.tripDate)} </div>
+              {!!dist && <div>Distance : {dist.toLocaleString("fr-FR")} km</div>}
+            </div>
+
+            <div className="grid gap-1">
+              <div>Sièges : {r.seats ?? "—"}</div>
+              <div>Total : {fmtMoney(r.priceTotal)}</div>
+              <div>Bus : {busPlates.length ? busPlates.join(", ") : "—"}</div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Paiement :</span>
+              <Badge variant="outline" className="px-1.5 capitalize">{frPayment(pstat)}</Badge>
+            </div>
+
+            <div className="text-xs text-muted-foreground">Créée le {shortDatetime(r.createdAt)}</div>
           </div>
-        ),
-        enableSorting: false,
+        )
       },
+    }),
 
-      // Itinéraire
-      {
-        id: "route",
-        header: "Itinéraire",
-        cell: ({ row }) => (
-          <span className="block max-w-[260px] truncate">
-            {row.original.route?.from ?? "—"} → {row.original.route?.to ?? "—"}
-          </span>
-        ),
-        enableSorting: false,
-      },
+    // Date (friendly)
+    { id: "tripDate", header: "Date", cell: ({ row }) => friendlyDateTime(row.original.tripDate) },
 
-      // Sièges
-      {
-        accessorKey: "seats",
-        header: () => <div className="w-full text-right">Sièges</div>,
-        cell: ({ row }) => <div className="w-full text-right">{row.original.seats ?? "—"}</div>,
-      },
+    { id: "passenger", header: "Passager", cell: ({ row }) => (
+        <div className="max-w-[240px] truncate">
+          {row.original.passenger?.name ?? "—"}
+          <div className="text-xs text-muted-foreground">{row.original.passenger?.phone ?? "—"}</div>
+        </div>
+      ),
+      enableSorting: false,
+    },
 
-      // Bus (plates)
-      {
-        id: "buses",
-        header: "Bus",
-        cell: ({ row }) => {
-          const plates = (row.original.busIds ?? []).map((id) => busPlateById.get(String(id)) ?? String(id))
-          return (
-            <div className="max-w-[260px] truncate text-right">
-              {plates.length ? plates.join(", ") : "—"}
-            </div>
-          )
-        },
-        enableSorting: false,
-      },
+    { id: "route", header: "Itinéraire", cell: ({ row }) => (
+        <span className="block max-w-[260px] truncate">
+          {row.original.route?.from ?? "—"} → {row.original.route?.to ?? "—"}
+        </span>
+      ),
+      enableSorting: false,
+    },
 
-      // Event
-      {
-        accessorKey: "event",
-        header: "Événement",
-        cell: ({ row }) => (
-          <Badge variant="outline" className="px-1.5">{frEvent(row.original.event)}</Badge>
-        ),
-      },
+    { accessorKey: "seats", header: () => <div className="w-full text-right">Sièges</div>,
+      cell: ({ row }) => <div className="w-full text-right">{row.original.seats ?? "—"}</div> },
 
-      // Total
-      {
-        id: "total",
-        header: () => <div className="w-full text-right">Total</div>,
-        cell: ({ row }) => <div className="w-full text-right">{fmtMoney(row.original.priceTotal)}</div>,
+    { id: "buses", header: "Bus", cell: ({ row }) => {
+        const plates = (row.original.busIds ?? []).map((id) => busPlateById.get(String(id)) ?? String(id))
+        return <div className="max-w-[260px] truncate text-right">{plates.length ? plates.join(", ") : "—"}</div>
       },
+      enableSorting: false,
+    },
 
-      // Statut
-      {
-        accessorKey: "status",
-        header: "Statut",
-        cell: ({ row }) => (
-          <Badge variant="outline" className="px-1.5 capitalize">{frStatus(row.original.status)}</Badge>
-        ),
-      },
+    { accessorKey: "event", header: "Événement",
+      cell: ({ row }) => <Badge variant="outline" className="px-1.5">{frEvent(row.original.event)}</Badge> },
 
-      // Paiement
-      {
-        id: "paymentStatus",
-        header: "Paiement",
-        cell: () => {
-          const pstat = derivePaymentStatus()
-          return <Badge variant="outline" className="px-1.5 capitalize">{frPayment(pstat)}</Badge>
-        },
-      },
-    ]
-  }, [busPlateById])
+    { id: "total", header: () => <div className="w-full text-right">Total</div>,
+      cell: ({ row }) => <div className="w-full text-right">{fmtMoney(row.original.priceTotal)}</div> },
+
+    { accessorKey: "status", header: "Statut",
+      cell: ({ row }) => <Badge variant="outline" className="px-1.5 capitalize">{frStatus(row.original.status)}</Badge> },
+
+    { id: "paymentStatus", header: "Paiement",
+      cell: () => <Badge variant="outline" className="px-1.5 capitalize">{frPayment("none")}</Badge> },
+  ], [busPlateById])
 
   const groupBy: GroupByConfig<UIReservation>[] = [
-    {
-      id: "date",
-      label: "Date",
-      // Group rows by a human-friendly day string (no TZ shift)
-      accessor: (r: UIReservation) => dateHeaderLabel(r.tripDate),
-    },
-    {
-      id: "client",
-      label: "Clients",
-      accessor: (r: UIReservation) => r.passenger?.name ?? "—",
-    },
-    {
-      id: "event",
-      label: "Événements",
-      // Group label shown in French, value in data remains English.
-      accessor: (r: UIReservation) => frEvent(r.event),
-    },
+    { id: "date", label: "Date", accessor: (r) => dateHeaderLabel(r.tripDate) },
+    { id: "client", label: "Clients", accessor: (r) => r.passenger?.name ?? "—" },
+    { id: "event", label: "Événements", accessor: (r) => frEvent(r.event) },
   ]
-
-  /* --------------------------- Row action handlers -------------------------- */
 
   function renderRowActions(r: UIReservation) {
     const isCancelled = r.status === "cancelled"
     return (
       <>
-        <DropdownMenuItem onClick={() => { setEditing(r); setOpen(true) }}>
-          Modifier
-        </DropdownMenuItem>
-
+        <DropdownMenuItem onClick={() => { setEditing(r); setOpen(true) }}>Modifier</DropdownMenuItem>
         {!isCancelled && (
-          <DropdownMenuItem
-            onClick={async () => {
-              // optimistic status change
-              const prev = rows
-              setRows((xs) => xs.map((x) => (x.id === r.id ? { ...x, status: "cancelled" } as UIReservation : x)))
-              try {
-                await reservationApi.setStatus(r.id, "cancelled")
-                toast("Réservation annulée")
-                await reload()
-              } catch (e: any) {
-                setRows(prev)
-                toast.error(e?.message ?? "Échec de l’annulation.")
-              }
-            }}
-          >
-            Annuler
-          </DropdownMenuItem>
-        )}
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem
-          className="text-rose-600"
-          onClick={async () => {
-            // optimistic delete (soft-delete)
+          <DropdownMenuItem onClick={async () => {
             const prev = rows
-            setRows((xs) => xs.filter((x) => x.id !== r.id))
+            setRows((xs) => xs.map((x) => (x.id === r.id ? { ...x, status: "cancelled" } : x)))
             try {
-              await reservationApi.remove(r.id)
-              toast("Réservation supprimée")
+              await reservationApi.setStatus(r.id, "cancelled")
+              toast("Réservation annulée")
               await reload()
             } catch (e: any) {
               setRows(prev)
-              toast.error(e?.message ?? "Échec de la suppression.")
+              toast.error(e?.message ?? "Échec de l’annulation.")
             }
-          }}
-        >
-          Supprimer
-        </DropdownMenuItem>
+          }}>Annuler</DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-rose-600" onClick={async () => {
+          const prev = rows
+          setRows((xs) => xs.filter((x) => x.id !== r.id))
+          try {
+            await reservationApi.remove(r.id)
+            toast("Réservation supprimée")
+            await reload()
+          } catch (e: any) {
+            setRows(prev)
+            toast.error(e?.message ?? "Échec de la suppression.")
+          }
+        }}>Supprimer</DropdownMenuItem>
       </>
     )
   }
 
-  // getRowId (typed id param if you use it elsewhere)
   const getRowId = (r: UIReservation) => String(r.id)
 
   return (
@@ -499,13 +375,8 @@ export default function ReservationPage() {
           <h1 className="text-xl font-semibold">Réservations</h1>
           <p className="text-sm text-muted-foreground">Suivez les réservations, paiements et voyages planifiés.</p>
         </div>
-
-        {/* Switch to map layout */}
         <Button asChild variant="outline">
-          <Link to="/map/reservations">
-            <MapIcon className="mr-2 h-4 w-4" />
-            Vue carte
-          </Link>
+          <Link to="/map/reservations"><MapIcon className="mr-2 h-4 w-4" />Vue carte</Link>
         </Button>
       </div>
 
@@ -545,15 +416,13 @@ export default function ReservationPage() {
         editing={editing}
         onSubmit={async (res) => {
           if (editing) {
-            // optimistic update
             const prev = rows
             setRows((xs) => xs.map((x) => (x.id === res.id ? { ...x, ...res } : x)))
             try {
               const apiRes = await reservationApi.update(res.id, res)
-              // server is source of truth (may compute fields)
               setRows((xs) => xs.map((x) => (x.id === res.id ? apiRes.data : x)))
               toast("Réservation mise à jour.")
-              await reload() // hard refresh to pick up related data/aggregates
+              await reload()
             } catch (e: any) {
               setRows(prev)
               toast.error(e?.message ?? "Échec de la mise à jour.")
@@ -561,24 +430,21 @@ export default function ReservationPage() {
               setEditing(null)
             }
           } else {
-            // optimistic add with temp id
             const tempId = res.id
-            const temp = { ...res }
-            setRows((xs) => [temp, ...xs])
+            setRows((xs) => [res, ...xs])
             try {
               const apiRes = await reservationApi.create(res)
-              // swap temp by server row
               setRows((xs) => xs.map((x) => (x.id === tempId ? apiRes.data : x)))
               toast("Réservation ajoutée.")
-              await reload() // ensure joins/computed fields are fresh
+              await reload()
             } catch (e: any) {
               setRows((xs) => xs.filter((x) => x.id !== tempId))
               toast.error(e?.message ?? "Échec de la création.")
             }
           }
         }}
-        trips={[]} // no trips API wired yet; keep empty array
-        buses={buses as unknown as any[]} // used for MultiSelect (id+plate)
+        trips={[]}
+        buses={buses as unknown as any[]}
       />
 
       <ImportDialog<UIReservation>
@@ -588,7 +454,7 @@ export default function ReservationPage() {
         description="Chargez un CSV/Excel, mappez les colonnes, puis validez l'import."
         fields={[
           { key: "code", label: "Code" },
-          { key: "tripDate", label: "Date du trajet (YYYY-MM-DD HH:mm[:ss])", required: true },
+          { key: "tripDate", label: "Date du trajet (YYYY-MM-DD HH:mm[:ss][.ffffff][Z|±HH:MM])", required: true },
           { key: "route.from", label: "Départ", required: true },
           { key: "route.to", label: "Arrivée", required: true },
           { key: "passenger.name", label: "Passager · Nom", required: true },
@@ -641,12 +507,10 @@ export default function ReservationPage() {
           return res
         }}
         onConfirm={async (imported) => {
-          // Optimistic batch add, then POST each
           const prev = rows
           setRows((xs) => [...imported, ...xs])
           try {
             const created = await Promise.all(imported.map((r) => reservationApi.create(r).then((x) => x.data)))
-            // Replace temps by server rows (match by code+tripDate+phone as fallback)
             const key = (r: UIReservation) =>
               r.code ? `code:${r.code}` : `npd:${(r.passenger?.name ?? "").toLowerCase()}|${r.passenger?.phone}|${r.tripDate}`
             setRows((xs) => {
