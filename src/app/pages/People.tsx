@@ -34,6 +34,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import peopleApi, { type Person, type PersonRole } from "@/api/people"
 import { ApiError } from "@/api/apiService"
 
+/* -------------------------- i18n helpers -------------------------- */
+
+const ROLE_LABELS: Record<PersonRole, string> = {
+  driver: "Chauffeur",
+  owner: "Propriétaire",
+  conductor: "Receveur",
+}
+const frRole = (r?: PersonRole | null) => (r ? (ROLE_LABELS[r] ?? r) : "—")
+
+type PersonStatus = NonNullable<Person["status"]> // expect "active" | "inactive" in your API
+const STATUS_LABELS: Partial<Record<PersonStatus, string>> = {
+  active: "Actif",
+  inactive: "Inactif",
+}
+const frStatus = (s?: Person["status"] | null) => (s ? (STATUS_LABELS[s as PersonStatus] ?? String(s)) : "—")
+
 /* -------------------------- Error helper -------------------------- */
 
 function showValidationErrors(err: unknown) {
@@ -81,7 +97,7 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
       email: form.email ? String(form.email).trim() : undefined,
       licenseNo: role === "driver" ? (form.licenseNo ? String(form.licenseNo).trim() : undefined) : undefined,
       createdAt: editing?.createdAt ?? undefined,
-      status: editing?.status ?? undefined,
+      status: (form.status as Person["status"]) ?? editing?.status ?? "active",
     }
 
     if (!payload.name) {
@@ -144,6 +160,20 @@ function AddEditPersonDialog({ open, onOpenChange, editing, onSubmit }: AddEditP
               />
             </div>
           )}
+
+          <div className="grid gap-1.5">
+            <Label>Statut</Label>
+            <Select
+              value={(form.status as Person["status"]) ?? "active"}
+              onValueChange={(v) => set("status", v as Person["status"])}
+            >
+              <SelectTrigger><SelectValue placeholder="Sélectionner un statut" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Actif</SelectItem>
+                <SelectItem value="inactive">Inactif</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <DialogFooter>
@@ -194,12 +224,23 @@ export default function PeoplePage() {
     {
       id: "role",
       label: "Rôle",
+      // Values remain English; labels are French.
       options: [
-        { label: "Chauffeur", value: "driver" },
-        { label: "Propriétaire", value: "owner" },
-        { label: "Receveur", value: "conductor" },
+        { label: ROLE_LABELS.driver, value: "driver" },
+        { label: ROLE_LABELS.owner, value: "owner" },
+        { label: ROLE_LABELS.conductor, value: "conductor" },
       ],
       accessor: (p) => p.role ?? "",
+      defaultValue: "",
+    },
+    {
+      id: "status",
+      label: "Statut",
+      options: [
+        { label: "Actif", value: "active" },
+        { label: "Inactif", value: "inactive" },
+      ],
+      accessor: (p) => p.status ?? "",
       defaultValue: "",
     },
   ]
@@ -227,7 +268,11 @@ export default function PeoplePage() {
           <div className="grid gap-2 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Rôle :</span>
-              <Badge variant="outline" className="px-1.5 capitalize">{p.role}</Badge>
+              <Badge variant="outline" className="px-1.5 capitalize">{frRole(p.role)}</Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Statut :</span>
+              <Badge variant="outline" className="px-1.5 capitalize">{frStatus(p.status)}</Badge>
             </div>
             <div><span className="text-muted-foreground">Téléphone :</span> {p.phone ?? "—"}</div>
             <div><span className="text-muted-foreground">Email :</span> {p.email ?? "—"}</div>
@@ -240,7 +285,16 @@ export default function PeoplePage() {
         header: "Rôle",
         cell: ({ row }) => (
           <Badge variant="outline" className="px-1.5 capitalize">
-            {row.original.role}
+            {frRole(row.original.role)}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Statut",
+        cell: ({ row }) => (
+          <Badge variant="outline" className="px-1.5 capitalize">
+            {frStatus(row.original.status)}
           </Badge>
         ),
       },
@@ -304,17 +358,20 @@ export default function PeoplePage() {
       </>
     )
   }
-  
+
   const groupBy: GroupByConfig<Person>[] = [
     {
       id: "role",
       label: "Rôle",
-      accessor: (r: Person) => r.role ?? "—",
+      // Show French label in group header
+      accessor: (r: Person) => frRole(r.role),
+      sortGroups: (a, b) => a.localeCompare(b, "fr"),
     },
     {
       id: "status",
-      label: "Bus affecté",
-      accessor: (r: Person) => r.status ?? "—",
+      label: "Statut",
+      accessor: (r: Person) => frStatus(r.status),
+      sortGroups: (a, b) => a.localeCompare(b, "fr"),
     },
   ]
 
