@@ -1,3 +1,4 @@
+// src/pages/Buses.tsx
 "use client"
 
 import * as React from "react"
@@ -88,7 +89,30 @@ function showValidationErrors(err: unknown) {
   toast.error((e as any)?.message ?? "Erreur inconnue.")
 }
 
-/* --------------------- component --------------------- */
+/** Flatten common nested relations (operator/driver/conductor) into the
+ * flat fields consumed by the table (…Id / …Name). Works with a variety
+ * of backend shapes: { operator }, { owner }, { driver }, { conductor }.
+ */
+function normalizeBusRelations(raw: any): UIBus {
+  const operator = raw.operator ?? raw.owner
+  const driver = raw.driver ?? raw.assignedDriver
+  const conductor = raw.conductor ?? raw.assignedConductor
+
+  return {
+    ...raw,
+    // owner/operator
+    operatorId: raw.operatorId ?? operator?.id ?? raw.ownerId ?? undefined,
+    operatorName: raw.operatorName ?? operator?.name ?? raw.ownerName ?? undefined,
+    // driver
+    assignedDriverId: raw.assignedDriverId ?? driver?.id ?? raw.driverId ?? undefined,
+    driverName: raw.driverName ?? driver?.name ?? undefined,
+    // conductor/receveur  THIS FIXES THE “—”
+    assignedConductorId:
+      raw.assignedConductorId ?? conductor?.id ?? raw.conductorId ?? undefined,
+    conductorName:
+      raw.conductorName ?? conductor?.name ?? undefined,
+  } as UIBus
+}
 
 export default function BusesPage() {
   const [rows, setRows] = React.useState<UIBus[]>([])
@@ -109,9 +133,9 @@ export default function BusesPage() {
   const getPersonName = React.useCallback(
     (id?: string | null, fallbackName?: string | null) => {
       const safeId: string | undefined = id ?? undefined
-      const safeFallback: string | undefined = fallbackName ?? undefined
-      if (!safeId) return safeFallback ?? "—"
-      return personById.get(safeId)?.name ?? safeFallback ?? "—"
+      const safeFallback: string | undefined = (fallbackName ?? undefined) as string | undefined
+      if (!safeId) return (safeFallback && safeFallback.trim()) ? safeFallback : "—"
+      return personById.get(safeId)?.name ?? ((safeFallback && safeFallback.trim()) ? safeFallback : "—")
     },
     [personById]
   )
@@ -120,11 +144,20 @@ export default function BusesPage() {
     try {
       setLoading(true)
       const [busRes, peopleRes] = await Promise.all([
-        busApi.list({ per_page: 100, with: ["operator", "driver", "conductor"], order_by: "created_at", order_dir: "desc" }),
+        busApi.list({
+          per_page: 100,
+          with: ["operator", "driver", "conductor"],
+          order_by: "created_at",
+          order_dir: "desc",
+        }),
         peopleApi.list({ per_page: 200 }), // owner/driver/conductor
       ])
-      setRows(busRes.data.rows)
-      setPeople(peopleRes.data.rows)
+
+      // Normalize/flatten relations so …Id/…Name are always populated
+      const normalizedRows = (busRes.data.rows ?? []).map(normalizeBusRelations)
+
+      setRows(normalizedRows)
+      setPeople(peopleRes.data.rows ?? [])
     } catch (e) {
       showValidationErrors(e)
     } finally {
@@ -463,7 +496,7 @@ export default function BusesPage() {
           { key: "status", label: "Statut" },
           { key: "operatorId", label: "Propriétaire (nom ou ID)" },
           { key: "assignedDriverId", label: "Chauffeur (nom ou ID)" },
-          { key: "assignedConductorId", label: "Receveur (nom ou ID)" }, // NEW
+          { key: "assignedConductorId", label: "Receveur (nom ou ID)" },
         ]}
         sampleHeaders={[
           "plate",
@@ -475,10 +508,10 @@ export default function BusesPage() {
           "status",
           "owner",
           "driver",
-          "conductor",          // names
+          "conductor",
           "operatorId",
           "assignedDriverId",
-          "assignedConductorId", // IDs
+          "assignedConductorId",
         ]}
         transform={(raw) => {
           const norm = (v: unknown) => (typeof v === "string" ? v.trim() : v)
@@ -506,8 +539,11 @@ export default function BusesPage() {
             if (v === null || v === undefined) return undefined
             const s = String(v).trim()
             // Prefer id match; fall back to exact name in our cached list
+            // (Import dialog executes after page load so `people` is available)
+            // eslint-disable-next-line @typescript-eslint/no-use-before-define
             if (personById.has(s as Person["id"])) return s as Person["id"]
             const lower = s.toLowerCase()
+            // eslint-disable-next-line @typescript-eslint/no-use-before-define
             for (const p of people) {
               if ((p.name ?? "").trim().toLowerCase() === lower) return p.id
             }
@@ -516,19 +552,19 @@ export default function BusesPage() {
 
           const operatorId = toPersonId(raw["operatorId"] ?? raw["owner"])
           const assignedDriverId = toPersonId(raw["assignedDriverId"] ?? raw["driver"])
-          const assignedConductorId = toPersonId(raw["assignedConductorId"] ?? raw["conductor"]) // NEW
+          const assignedConductorId = toPersonId(raw["assignedConductorId"] ?? raw["conductor"])
 
           const bus: UIBus = {
             id: uuid(),
             plate,
-            type: typeVal,   // BusType | undefined
+            type: typeVal,
             model,
             capacity: capacityNum,
             year: yearNum,
             status: statusStr as UIBus["status"],
             operatorId,
             assignedDriverId,
-            assignedConductorId, // NEW
+            assignedConductorId,
           }
 
           return bus as unknown as Record<string, unknown>
