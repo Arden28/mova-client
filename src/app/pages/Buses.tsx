@@ -150,9 +150,6 @@ export default function BusesPage() {
               <span className="text-muted-foreground">Type :</span> {prettyType(b.type)}
             </div>
             <div>
-              <span className="text-muted-foreground">Libellé :</span> {b.label ?? "—"}
-            </div>
-            <div>
               <span className="text-muted-foreground">Modèle :</span> {b.model ?? "—"}
             </div>
             <div>
@@ -196,7 +193,7 @@ export default function BusesPage() {
         enableSorting: false,
       },
 
-      // NEW: Type column (pretty label)
+      // Type column (pretty label)
       {
         accessorKey: "type",
         header: "Type",
@@ -205,16 +202,6 @@ export default function BusesPage() {
             {prettyType(row.original.type)}
           </Badge>
         ),
-      },
-
-      // NEW: Label column (e.g., "Hiace", "Coaster")
-      {
-        accessorKey: "label",
-        header: "Libellé",
-        cell: ({ row }) => (
-          <span className="block max-w-[200px] truncate">{row.original.label ?? "—"}</span>
-        ),
-        enableSorting: false,
       },
 
       {
@@ -437,8 +424,7 @@ export default function BusesPage() {
         description="Chargez un CSV/Excel, mappez les colonnes, puis validez l'import."
         fields={[
           { key: "plate", label: "Immatriculation", required: true },
-          { key: "label", label: "Libellé (ex: Hiace, Coaster)" }, // NEW
-          { key: "type", label: "Type (ex: hiace, coaster)" },      // NEW
+          { key: "type", label: "Type (ex: hiace, coaster)" },
           { key: "model", label: "Modèle" },
           { key: "capacity", label: "Capacité" },
           { key: "year", label: "Année" },
