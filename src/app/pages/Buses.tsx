@@ -24,6 +24,15 @@ import busApi, { type UIBus, type BusStatus } from "@/api/bus"
 import peopleApi, { type Person } from "@/api/people"
 import { ApiError } from "@/api/apiService"
 
+/* --------------------- i18n helpers --------------------- */
+
+const BUS_STATUS_LABELS: Record<Exclude<BusStatus, undefined>, string> = {
+  active: "Actif",
+  inactive: "Inactif",
+  maintenance: "Maintenance",
+}
+const frBusStatus = (s?: UIBus["status"] | null) => (s ? (BUS_STATUS_LABELS[s] ?? s) : "—")
+
 /* --------------------- helpers --------------------- */
 
 const uuid = (): string => {
@@ -68,7 +77,6 @@ export default function BusesPage() {
     (id?: string | null, fallbackName?: string | null) => {
       const safeId: string | undefined = id ?? undefined
       const safeFallback: string | undefined = fallbackName ?? undefined
-
       if (!safeId) return safeFallback ?? "—"
       return personById.get(safeId)?.name ?? safeFallback ?? "—"
     },
@@ -129,7 +137,7 @@ export default function BusesPage() {
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Statut :</span>
               <Badge variant="outline" className="px-1.5 capitalize">
-                {b.status ?? "—"}
+                {frBusStatus(b.status)}
               </Badge>
             </div>
           </div>
@@ -169,7 +177,7 @@ export default function BusesPage() {
         header: "Statut",
         cell: ({ row }) => (
           <Badge variant="outline" className="px-1.5 capitalize">
-            {row.original.status ?? "—"}
+            {frBusStatus(row.original.status)}
           </Badge>
         ),
       },
@@ -185,21 +193,21 @@ export default function BusesPage() {
   )
 
   const filters = React.useMemo<FilterConfig<UIBus>[]>(() => {
+    // Keep values in English; display labels in French.
+    const statusOptions = (["active", "inactive", "maintenance"] as const).map((v) => ({
+      value: v,
+      label: BUS_STATUS_LABELS[v],
+    }))
     return [
       {
         id: "status",
         label: "Statut",
-        options: [
-          { label: "Actif", value: "active" },
-          { label: "Inactif", value: "inactive" },
-          { label: "Maintenance", value: "maintenance" },
-        ],
+        options: statusOptions,
         accessor: (b) => b.status ?? "",
         defaultValue: "",
       },
     ]
   }, [])
-
 
   const groupBy: GroupByConfig<UIBus>[] = [
     {
@@ -207,8 +215,16 @@ export default function BusesPage() {
       label: "Type de bus",
       accessor: (r: UIBus) => r.type ?? "—",
     },
+    {
+      id: "owner",
+      label: "Propriétaire",
+      // Group label uses owner's *name*; underlying data keeps IDs/values untouched.
+      accessor: (r: UIBus) => getPersonName(r.operatorId, r.operatorName),
+      // Optional: sort alphabetically by owner name
+      sortGroups: (a, b) => a.localeCompare(b, "fr"),
+    },
   ]
-  
+
   // getRowId (typed id param if you use it elsewhere)
   const getRowId = (r: UIBus) => String(r.id)
 
@@ -229,7 +245,7 @@ export default function BusesPage() {
         data={rows}
         columns={columns}
         getRowId={getRowId}
-        searchable={{ placeholder: "Rechercher immatriculation, modèle…", fields: ["plate", "model"] }}
+        searchable={searchable}
         filters={filters}
         loading={loading}
         onAdd={() => {
@@ -319,7 +335,7 @@ export default function BusesPage() {
       <AddEditBusDialog
         open={open}
         onOpenChange={setOpen}
-        editing={editing as any} // dialog shape matches UIBus keys used (plate, capacity, model, year, status, operatorId, assignedDriverId)
+        editing={editing as any} // dialog shape matches used keys: plate, capacity, model, year, status, operatorId, assignedDriverId
         people={people}
         onSubmit={async (bus: any) => {
           // bus has UIBus-compatible fields
