@@ -451,36 +451,37 @@ type Props = {
 
 type VehicleType = "hiace" | "coaster"
 type EventType =
-  | 'school_trip'
-  | 'university_trip'
-  | 'educational_tour'
-  | 'student_transport'
-  | 'wedding'
-  | 'funeral'
-  | 'birthday'
-  | 'baptism'
-  | 'family_meeting'
-  | 'conference'
-  | 'seminar'
-  | 'company_trip'
-  | 'business_mission'
-  | 'staff_shuttle'
-  | 'football_match'
-  | 'sports_tournament'
-  | 'concert'
-  | 'festival'
-  | 'school_competition'
-  | 'tourist_trip'
-  | 'group_excursion'
-  | 'pilgrimage'
-  | 'site_visit'
-  | 'airport_transfer'
-  | 'election_campaign'
-  | 'administrative_mission'
-  | 'official_trip'
-  | 'private_transport'
-  | 'special_event'
-  | 'simple_rental';
+  | "none"
+  | "school_trip"
+  | "university_trip"
+  | "educational_tour"
+  | "student_transport"
+  | "wedding"
+  | "funeral"
+  | "birthday"
+  | "baptism"
+  | "family_meeting"
+  | "conference"
+  | "seminar"
+  | "company_trip"
+  | "business_mission"
+  | "staff_shuttle"
+  | "football_match"
+  | "sports_tournament"
+  | "concert"
+  | "festival"
+  | "school_competition"
+  | "tourist_trip"
+  | "group_excursion"
+  | "pilgrimage"
+  | "site_visit"
+  | "airport_transfer"
+  | "election_campaign"
+  | "administrative_mission"
+  | "official_trip"
+  | "private_transport"
+  | "special_event"
+  | "simple_rental";
 
 
 type QuoteResponse = {
@@ -869,10 +870,37 @@ export default function AddEditReservationDialog({
                   value={eventType}
                   onChange={(e) => setEventType(e.target.value as EventType)}
                 >
-                  <option value="none">Aucun</option>
-                  <option value="wedding">Mariage</option>
-                  <option value="funeral">Funérailles</option>
-                  <option value="church">Église</option>
+                    <option value="none">Aucun</option>
+                    <option value="school_trip">Voyage scolaire</option>
+                    <option value="university_trip">Voyage universitaire</option>
+                    <option value="educational_tour">Visite éducative</option>
+                    <option value="student_transport">Transport étudiant</option>
+                    <option value="wedding">Mariage</option>
+                    <option value="funeral">Funérailles</option>
+                    <option value="birthday">Anniversaire</option>
+                    <option value="baptism">Baptême</option>
+                    <option value="family_meeting">Réunion de famille</option>
+                    <option value="conference">Conférence</option>
+                    <option value="seminar">Séminaire</option>
+                    <option value="company_trip">Voyage d’entreprise</option>
+                    <option value="business_mission">Mission professionnelle</option>
+                    <option value="staff_shuttle">Navette du personnel</option>
+                    <option value="football_match">Match de football</option>
+                    <option value="sports_tournament">Tournoi sportif</option>
+                    <option value="concert">Concert</option>
+                    <option value="festival">Festival</option>
+                    <option value="school_competition">Compétition scolaire</option>
+                    <option value="tourist_trip">Voyage touristique</option>
+                    <option value="group_excursion">Excursion de groupe</option>
+                    <option value="pilgrimage">Pèlerinage</option>
+                    <option value="site_visit">Visite de site</option>
+                    <option value="airport_transfer">Transfert aéroport</option>
+                    <option value="election_campaign">Campagne électorale</option>
+                    <option value="administrative_mission">Mission administrative</option>
+                    <option value="official_trip">Voyage officiel</option>
+                    <option value="private_transport">Transport privé</option>
+                    <option value="special_event">Événement spécial</option>
+                    <option value="simple_rental">Location simple</option>
                 </select>
               </div>
 
