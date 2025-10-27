@@ -234,7 +234,7 @@ export default function BusesPage() {
   const searchable = React.useMemo(
     () => ({
       placeholder: "Rechercher immatriculation, modèle, type, libellé…",
-      fields: ["plate", "model", "type", "label"] as (keyof UIBus)[],
+      fields: ["plate", "model", "type"] as (keyof UIBus)[],
     }),
     []
   )
@@ -504,7 +504,6 @@ export default function BusesPage() {
           const bus: UIBus = {
             id: uuid(),
             plate,
-            label,           // optional UI label
             type: typeVal,   // BusType | undefined
             model,
             capacity: capacityNum,
