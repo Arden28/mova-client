@@ -23,6 +23,92 @@ import { Button } from "@/components/ui/button"
 import { Link } from "react-router-dom"
 import { MapIcon } from "lucide-react"
 
+/* ------------------------------- i18n helpers ------------------------------ */
+
+// If you already declare EventType elsewhere, you can remove this local type.
+type EventType =
+  | "school_trip"
+  | "university_trip"
+  | "educational_tour"
+  | "student_transport"
+  | "wedding"
+  | "funeral"
+  | "birthday"
+  | "baptism"
+  | "family_meeting"
+  | "conference"
+  | "seminar"
+  | "company_trip"
+  | "business_mission"
+  | "staff_shuttle"
+  | "football_match"
+  | "sports_tournament"
+  | "concert"
+  | "festival"
+  | "school_competition"
+  | "tourist_trip"
+  | "group_excursion"
+  | "pilgrimage"
+  | "site_visit"
+  | "airport_transfer"
+  | "election_campaign"
+  | "administrative_mission"
+  | "official_trip"
+  | "private_transport"
+  | "special_event"
+  | "simple_rental"
+
+const STATUS_LABELS: Record<ReservationStatus, string> = {
+  pending: "En attente",
+  confirmed: "Confirmée",
+  cancelled: "Annulée",
+}
+
+const PAYMENT_LABELS: Record<PayState, string> = {
+  paid: "Payé",
+  pending: "En attente",
+  failed: "Échoué",
+  none: "Aucun",
+}
+
+const EVENT_LABELS: Record<EventType, string> = {
+  school_trip: "Sortie scolaire",
+  university_trip: "Voyage universitaire",
+  educational_tour: "Visite pédagogique",
+  student_transport: "Transport d’étudiants",
+  wedding: "Mariage",
+  funeral: "Funérailles",
+  birthday: "Anniversaire",
+  baptism: "Baptême",
+  family_meeting: "Retrouvailles familiales",
+  conference: "Conférence",
+  seminar: "Séminaire",
+  company_trip: "Voyage d’entreprise",
+  business_mission: "Mission professionnelle",
+  staff_shuttle: "Navette du personnel",
+  football_match: "Match de football",
+  sports_tournament: "Tournoi sportif",
+  concert: "Concert",
+  festival: "Festival",
+  school_competition: "Compétition scolaire",
+  tourist_trip: "Voyage touristique",
+  group_excursion: "Excursion de groupe",
+  pilgrimage: "Pèlerinage",
+  site_visit: "Visite de site",
+  airport_transfer: "Transfert aéroport",
+  election_campaign: "Campagne électorale",
+  administrative_mission: "Mission administrative",
+  official_trip: "Voyage officiel",
+  private_transport: "Transport privé",
+  special_event: "Événement spécial",
+  simple_rental: "Location simple",
+}
+
+// Safe labelers (fallback to the raw English value if unknown)
+const frStatus = (s?: ReservationStatus | null) => (s ? (STATUS_LABELS[s] ?? s) : "—")
+const frEvent = (e?: string | null) => (e ? (EVENT_LABELS[e as EventType] ?? e) : "—")
+const frPayment = (p: PayState) => PAYMENT_LABELS[p] ?? p
+
 /* ------------------------------- utilities -------------------------------- */
 
 const fmtMoney = (v?: number) => (typeof v === "number" ? `${v.toLocaleString("fr-FR")} FCFA` : "—")
@@ -96,26 +182,37 @@ export default function ReservationPage() {
     fields: ["code", "passenger.name", "passenger.phone", "route.from", "route.to"] as (keyof UIReservation)[],
   }
 
+  // Build nice French options using the English enum values
+  const statusOptions = (Object.keys(STATUS_LABELS) as ReservationStatus[]).map(v => ({
+    label: STATUS_LABELS[v],
+    value: v,
+  }))
+  const eventOptions = (Object.entries(EVENT_LABELS) as [EventType, string][])
+    .map(([value, label]) => ({ value, label }))
+
   const filters: FilterConfig<UIReservation>[] = [
     {
       id: "status",
       label: "Statut réservation",
-      options: [
-        { label: "En attente", value: "pending" },
-        { label: "Confirmée", value: "confirmed" },
-        { label: "Annulée", value: "cancelled" },
-      ],
+      options: statusOptions,
       accessor: (r) => r.status ?? "",
+      defaultValue: "",
+    },
+    {
+      id: "event",
+      label: "Événement",
+      options: eventOptions,
+      accessor: (r) => r.event ?? "",
       defaultValue: "",
     },
     {
       id: "payment",
       label: "Paiement",
       options: [
-        { label: "Payé", value: "paid" },
-        { label: "En attente", value: "pending" },
-        { label: "Échoué", value: "failed" },
-        { label: "Aucun", value: "none" },
+        { label: PAYMENT_LABELS.paid, value: "paid" },
+        { label: PAYMENT_LABELS.pending, value: "pending" },
+        { label: PAYMENT_LABELS.failed, value: "failed" },
+        { label: PAYMENT_LABELS.none, value: "none" },
       ],
       accessor: () => derivePaymentStatus(),
       defaultValue: "",
@@ -136,8 +233,15 @@ export default function ReservationPage() {
             <div className="grid gap-2 text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Statut :</span>
-                <Badge variant="outline" className="px-1.5 capitalize">{r.status}</Badge>
+                <Badge variant="outline" className="px-1.5 capitalize">{frStatus(r.status)}</Badge>
               </div>
+
+              {!!r.event && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Événement :</span>
+                  <Badge variant="outline" className="px-1.5">{frEvent(r.event)}</Badge>
+                </div>
+              )}
 
               <div className="grid gap-1">
                 <span className="text-muted-foreground">Passager</span>
@@ -163,7 +267,7 @@ export default function ReservationPage() {
 
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Paiement :</span>
-                <Badge variant="outline" className="px-1.5 capitalize">{pstat}</Badge>
+                <Badge variant="outline" className="px-1.5 capitalize">{frPayment(pstat)}</Badge>
               </div>
 
               <div className="text-xs text-muted-foreground">Créée le {shortDatetime(r.createdAt)}</div>
@@ -219,12 +323,12 @@ export default function ReservationPage() {
         enableSorting: false,
       },
 
-      // Statut
+      // Event
       {
         accessorKey: "event",
-        header: "Evénement",
+        header: "Événement",
         cell: ({ row }) => (
-          <Badge variant="outline" className="px-1.5 capitalize">{row.original.event}</Badge>
+          <Badge variant="outline" className="px-1.5">{frEvent(row.original.event)}</Badge>
         ),
       },
 
@@ -240,7 +344,7 @@ export default function ReservationPage() {
         accessorKey: "status",
         header: "Statut",
         cell: ({ row }) => (
-          <Badge variant="outline" className="px-1.5 capitalize">{row.original.status}</Badge>
+          <Badge variant="outline" className="px-1.5 capitalize">{frStatus(row.original.status)}</Badge>
         ),
       },
 
@@ -250,7 +354,7 @@ export default function ReservationPage() {
         header: "Paiement",
         cell: () => {
           const pstat = derivePaymentStatus()
-          return <Badge variant="outline" className="px-1.5 capitalize">{pstat}</Badge>
+          return <Badge variant="outline" className="px-1.5 capitalize">{frPayment(pstat)}</Badge>
         },
       },
     ]
@@ -264,8 +368,9 @@ export default function ReservationPage() {
     },
     {
       id: "event",
-      label: "Evénements",
-      accessor: (r: UIReservation) => r.event ?? "—",
+      label: "Événements",
+      // Group label shown in French, value in data remains English.
+      accessor: (r: UIReservation) => frEvent(r.event),
     },
   ]
 
@@ -431,7 +536,7 @@ export default function ReservationPage() {
           { key: "passenger.phone", label: "Passager · Téléphone", required: true },
           { key: "passenger.email", label: "Passager · Email" },
           { key: "seats", label: "Sièges", required: true },
-          { key: "busIds", label: "Bus IDs (uuid,uuid,…)" },
+          { key: "busIds", label: "Bus IDs (uuid,uuid,…)"},
           { key: "priceTotal", label: "Total (FCFA)" },
           { key: "status", label: "Statut (pending/confirmed/cancelled)" },
         ]}

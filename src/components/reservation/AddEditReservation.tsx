@@ -450,7 +450,38 @@ type Props = {
 }
 
 type VehicleType = "hiace" | "coaster"
-type EventType = "none" | "wedding" | "funeral" | "church"
+type EventType =
+  | 'school_trip'
+  | 'university_trip'
+  | 'educational_tour'
+  | 'student_transport'
+  | 'wedding'
+  | 'funeral'
+  | 'birthday'
+  | 'baptism'
+  | 'family_meeting'
+  | 'conference'
+  | 'seminar'
+  | 'company_trip'
+  | 'business_mission'
+  | 'staff_shuttle'
+  | 'football_match'
+  | 'sports_tournament'
+  | 'concert'
+  | 'festival'
+  | 'school_competition'
+  | 'tourist_trip'
+  | 'group_excursion'
+  | 'pilgrimage'
+  | 'site_visit'
+  | 'airport_transfer'
+  | 'election_campaign'
+  | 'administrative_mission'
+  | 'official_trip'
+  | 'private_transport'
+  | 'special_event'
+  | 'simple_rental';
+
 
 type QuoteResponse = {
   currency: string
