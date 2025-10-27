@@ -27,6 +27,7 @@ import { MapIcon } from "lucide-react"
 
 // If you already declare EventType elsewhere, you can remove this local type.
 type EventType =
+  | "none"
   | "school_trip"
   | "university_trip"
   | "educational_tour"
