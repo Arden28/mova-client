@@ -1,4 +1,3 @@
-// src/components/bus/AddEditBusDialog.tsx
 "use client"
 
 import * as React from "react"
@@ -79,6 +78,7 @@ export default function AddEditBusDialog({
   const [mileageKm, setMileageKm] = React.useState<number | "">("")
   const [operatorId, setOperatorId] = React.useState<Id | "">("")
   const [assignedDriverId, setAssignedDriverId] = React.useState<Id | "">("")
+  const [assignedConductorId, setAssignedConductorId] = React.useState<Id | "">("") // NEW
   const [lastServiceDate, setLastServiceDate] = React.useState<string>("")
 
   // Assurance (optionnelle)
@@ -90,6 +90,7 @@ export default function AddEditBusDialog({
   // Listes
   const owners = React.useMemo(() => people.filter((p) => p.role === "owner"), [people])
   const drivers = React.useMemo(() => people.filter((p) => p.role === "driver"), [people])
+  const conductors = React.useMemo(() => people.filter((p) => p.role === "conductor"), [people]) // NEW
 
   // Fallback labels (when selected id isn't present in people[] yet)
   const fallbackPersonLabels = React.useMemo(() => {
@@ -100,8 +101,15 @@ export default function AddEditBusDialog({
     if (editing?.assignedDriverId && editing.driverName) {
       map.set(String(editing.assignedDriverId), editing.driverName)
     }
+    if (editing?.assignedConductorId && editing.conductorName) {
+      map.set(String(editing.assignedConductorId), editing.conductorName) // NEW
+    }
     return map
-  }, [editing?.operatorId, editing?.operatorName, editing?.assignedDriverId, editing?.driverName])
+  }, [
+    editing?.operatorId, editing?.operatorName,
+    editing?.assignedDriverId, editing?.driverName,
+    editing?.assignedConductorId, editing?.conductorName,
+  ])
 
   const getPersonLabel = React.useCallback(
     (id: Id | ""): string | undefined => {
@@ -126,6 +134,7 @@ export default function AddEditBusDialog({
       setMileageKm(editing.mileageKm ?? "")
       setOperatorId((editing.operatorId as Id | undefined) ?? "")
       setAssignedDriverId((editing.assignedDriverId as Id | undefined) ?? "")
+      setAssignedConductorId((editing.assignedConductorId as Id | undefined) ?? "") // NEW
       setLastServiceDate(editing.lastServiceDate ?? "")
 
       const hasAnyInsurance = Boolean(
@@ -145,6 +154,7 @@ export default function AddEditBusDialog({
       setMileageKm("")
       setOperatorId("")
       setAssignedDriverId("")
+      setAssignedConductorId("") // NEW
       setLastServiceDate("")
       setHasInsurance(false)
       setInsProvider("")
@@ -173,9 +183,10 @@ export default function AddEditBusDialog({
       }
     }
 
-    // Lock owner/driver values for non-admins:
+    // Lock owner/driver/conductor values for non-admins:
     const lockedOperatorId = !isAdmin ? editing?.operatorId : operatorId
     const lockedDriverId = !isAdmin ? editing?.assignedDriverId : assignedDriverId
+    const lockedConductorId = !isAdmin ? editing?.assignedConductorId : assignedConductorId
 
     const payload: Partial<UIBus> & { id?: string } = {
       ...(editing?.id ? { id: editing.id } : {}),
@@ -188,6 +199,7 @@ export default function AddEditBusDialog({
       mileageKm: mileageKm === "" ? undefined : Number(mileageKm),
       operatorId: asStringOrUndefined(lockedOperatorId),
       assignedDriverId: asStringOrUndefined(lockedDriverId),
+      assignedConductorId: asStringOrUndefined(lockedConductorId), // NEW
       lastServiceDate: lastServiceDate && isIsoDate(lastServiceDate) ? lastServiceDate : undefined,
       ...(hasInsurance &&
       (insProvider.trim() || insPolicy.trim() || insValidUntil.trim())
@@ -317,7 +329,7 @@ export default function AddEditBusDialog({
     )
   }
 
-  // Combobox personne (propriétaire / chauffeur)
+  // Combobox personne (propriétaire / chauffeur / receveur)
   function PersonCombo({
     value,
     onChange,
@@ -547,6 +559,21 @@ export default function AddEditBusDialog({
                     onChange={setAssignedDriverId}
                     people={drivers}
                     placeholder="Choisir le chauffeur"
+                    disabled={!isAdmin}
+                  />
+                  {!isAdmin && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Réservé aux administrateurs
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-2 md:col-span-2">
+                  <Label>Receveur</Label>
+                  <PersonCombo
+                    value={assignedConductorId}
+                    onChange={setAssignedConductorId}
+                    people={conductors}
+                    placeholder="Choisir le receveur"
                     disabled={!isAdmin}
                   />
                   {!isAdmin && (

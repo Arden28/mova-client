@@ -120,7 +120,7 @@ export default function BusesPage() {
     try {
       setLoading(true)
       const [busRes, peopleRes] = await Promise.all([
-        busApi.list({ per_page: 100, with: ["operator", "driver"], order_by: "created_at", order_dir: "desc" }),
+        busApi.list({ per_page: 100, with: ["operator", "driver", "conductor"], order_by: "created_at", order_dir: "desc" }),
         peopleApi.list({ per_page: 200 }), // owner/driver/conductor
       ])
       setRows(busRes.data.rows)
@@ -160,6 +160,10 @@ export default function BusesPage() {
             <div>
               <span className="text-muted-foreground">Chauffeur :</span>{" "}
               {getPersonName(b.assignedDriverId, b.driverName)}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Receveur :</span>{" "}
+              {getPersonName(b.assignedConductorId, b.conductorName)}
             </div>
             <div>
               <span className="text-muted-foreground">Type :</span> {prettyType(b.type)}
@@ -203,6 +207,17 @@ export default function BusesPage() {
         cell: ({ row }) => (
           <span className="block max-w-[240px] truncate">
             {getPersonName(row.original.assignedDriverId, row.original.driverName)}
+          </span>
+        ),
+        enableSorting: false,
+      },
+
+      {
+        id: "conductor",
+        header: "Receveur",
+        cell: ({ row }) => (
+          <span className="block max-w-[240px] truncate">
+            {getPersonName(row.original.assignedConductorId, row.original.conductorName)}
           </span>
         ),
         enableSorting: false,
@@ -302,7 +317,7 @@ export default function BusesPage() {
         <div>
           <h1 className="text-xl font-semibold">Bus</h1>
           <p className="text-sm text-muted-foreground">
-            Gérez le parc, la capacité, les chauffeurs et l’état du service.
+            Gérez le parc, la capacité, les chauffeurs, receveurs et l’état du service.
           </p>
         </div>
       </div>
@@ -448,6 +463,7 @@ export default function BusesPage() {
           { key: "status", label: "Statut" },
           { key: "operatorId", label: "Propriétaire (nom ou ID)" },
           { key: "assignedDriverId", label: "Chauffeur (nom ou ID)" },
+          { key: "assignedConductorId", label: "Receveur (nom ou ID)" }, // NEW
         ]}
         sampleHeaders={[
           "plate",
@@ -459,8 +475,10 @@ export default function BusesPage() {
           "status",
           "owner",
           "driver",
+          "conductor",          // names
           "operatorId",
           "assignedDriverId",
+          "assignedConductorId", // IDs
         ]}
         transform={(raw) => {
           const norm = (v: unknown) => (typeof v === "string" ? v.trim() : v)
@@ -468,9 +486,7 @@ export default function BusesPage() {
           const plate = String(norm(raw["plate"]) ?? "").toUpperCase()
           if (!plate) return null
 
-          const label = (norm(raw["label"]) as string | undefined) ?? undefined
           const typeVal = toBusType(norm(raw["type"]) as string | undefined)
-
           const model = (norm(raw["model"]) as string | undefined) ?? undefined
 
           const toNumber = (v: unknown): number | undefined => {
@@ -500,6 +516,7 @@ export default function BusesPage() {
 
           const operatorId = toPersonId(raw["operatorId"] ?? raw["owner"])
           const assignedDriverId = toPersonId(raw["assignedDriverId"] ?? raw["driver"])
+          const assignedConductorId = toPersonId(raw["assignedConductorId"] ?? raw["conductor"]) // NEW
 
           const bus: UIBus = {
             id: uuid(),
@@ -511,6 +528,7 @@ export default function BusesPage() {
             status: statusStr as UIBus["status"],
             operatorId,
             assignedDriverId,
+            assignedConductorId, // NEW
           }
 
           return bus as unknown as Record<string, unknown>

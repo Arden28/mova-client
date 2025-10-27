@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 
 import "mapbox-gl/dist/mapbox-gl.css"
+import { Toaster } from "sonner"
 
 export default function AppLayout() {
   return (
@@ -21,6 +22,7 @@ export default function AppLayout() {
                 <Outlet />
               </React.Suspense>
             </div>
+            <Toaster />
           </main>
         </div>
       </div>

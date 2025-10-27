@@ -24,10 +24,12 @@ export type BusDto = {
   // UUID FKs (must match your migration)
   operator_id?: string | null
   assigned_driver_id?: string | null
+  assigned_conductor_id?: string | null 
 
-  // optional related snippets when `with=operator,driver`
+  // optional related snippets when `with=operator,driver,conductor`
   operator?: { id: string; name: string } | null
   driver?: { id: string; name: string } | null
+  conductor?: { id: string; name: string } | null 
 
   created_at?: string | null
   updated_at?: string | null
@@ -64,9 +66,11 @@ export type UIBus = {
 
   operatorId?: string | null
   assignedDriverId?: string | null
+  assignedConductorId?: string | null 
 
   operatorName?: string | null
   driverName?: string | null
+  conductorName?: string | null 
 
   createdAt?: string
   updatedAt?: string
@@ -91,8 +95,10 @@ export function toUIBus(b: BusDto): UIBus {
     insuranceValidUntil: b.insurance_valid_until ?? undefined,
     operatorId: b.operator_id ?? null,
     assignedDriverId: b.assigned_driver_id ?? null,
+    assignedConductorId: b.assigned_conductor_id ?? null, // 👈
     operatorName: b.operator?.name ?? undefined,
     driverName: b.driver?.name ?? undefined,
+    conductorName: b.conductor?.name ?? undefined, // 👈
     createdAt: b.created_at ?? undefined,
     updatedAt: b.updated_at ?? undefined,
   }
@@ -104,11 +110,7 @@ type PartialUIBus = Partial<UIBus>
 
 function asStringOrNull(v: unknown): string | null {
   const s =
-    typeof v === "string"
-      ? v.trim()
-      : v == null
-      ? ""
-      : String(v).trim()
+    typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim()
   return s ? s : null
 }
 
@@ -148,9 +150,10 @@ function toPayload(body: PartialUIBus): Record<string, unknown> {
     p.insurance_valid_until = isIsoDate(body.insuranceValidUntil) ? body.insuranceValidUntil : null
   }
 
-  // UUIDs: keep as strings (do not coerce to numbers)
+  // UUIDs
   if (body.operatorId !== undefined) p.operator_id = asStringOrNull(body.operatorId)
   if (body.assignedDriverId !== undefined) p.assigned_driver_id = asStringOrNull(body.assignedDriverId)
+  if (body.assignedConductorId !== undefined) p.assigned_conductor_id = asStringOrNull(body.assignedConductorId) // 👈
 
   return p
 }
@@ -162,12 +165,13 @@ export type ListParams = {
   status?: BusStatus | ""
   type?: BusType | ""
   operator_id?: string | ""     // UUID
-  driver_id?: string | ""       // UUID (your controller may name it driver_id)
+  driver_id?: string | ""       // UUID
+  conductor_id?: string | ""    // UUID 👈 (if your API supports)
   year_min?: number
   year_max?: number
   service_before?: string       // YYYY-MM-DD
   insurance_before?: string     // YYYY-MM-DD
-  with?: ("operator" | "driver")[]
+  with?: ("operator" | "driver" | "conductor")[] // 👈 include conductor
   order_by?: "created_at" | "updated_at" | "plate" | "status" | "type" | "year" | "mileage_km"
   order_dir?: "asc" | "desc"
   page?: number
@@ -201,7 +205,6 @@ async function list(params?: ListParams) {
 }
 
 async function create(payload: PartialUIBus) {
-  // Backend generates UUID, so do NOT send id on create
   const res = await api.post<BusDto, Record<string, unknown>>(`/buses`, toPayload(payload))
   return { ...res, data: toUIBus(res.data) }
 }
@@ -228,6 +231,14 @@ async function assignDriver(id: string, userId: string | null) {
   return { ...res, data: toUIBus(res.data) }
 }
 
+async function assignConductor(id: string, userId: string | null) {
+  const res = await api.post<BusDto, { user_id: string | null }>(
+    `/buses/${id}/assign-conductor`,
+    { user_id: userId }
+  )
+  return { ...res, data: toUIBus(res.data) }
+}
+
 async function setOperator(id: string, userId: string | null) {
   const res = await api.post<BusDto, { user_id: string | null }>(
     `/buses/${id}/set-operator`,
@@ -237,7 +248,7 @@ async function setOperator(id: string, userId: string | null) {
 }
 
 async function bulkStatus(ids: string[], status: BusStatus) {
-  const body = { ids, status } // UUIDs
+  const body = { ids, status }
   return api.post<{ updated: number }, typeof body>(`/buses/bulk-status`, body)
 }
 
@@ -248,8 +259,7 @@ export default {
   remove,
   setStatus,
   assignDriver,
+  assignConductor,
   setOperator,
   bulkStatus,
 }
-
-// export type { UIBus, BusType, BusStatus }

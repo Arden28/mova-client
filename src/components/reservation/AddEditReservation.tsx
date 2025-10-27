@@ -34,7 +34,9 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { Info } from "lucide-react"
+import { Info, Calendar as CalendarIcon, ChevronsUpDown, Check } from "lucide-react"
+import { Calendar } from "@/components/ui/calendar"
+import { format } from "date-fns"
 import api from "@/api/apiService"
 
 /* ----------------------------------------------------------------------------- 
@@ -483,11 +485,167 @@ type EventType =
   | "special_event"
   | "simple_rental";
 
-
 type QuoteResponse = {
   currency: string
   client_payable: number
   bus_payable: number
+}
+
+/* ----------------------------- Event Combobox ------------------------------ */
+
+const EVENT_OPTIONS: { value: EventType; label: string; group?: string }[] = [
+  { value: "none", label: "Aucun" },
+
+  // Éducation
+  { value: "school_trip", label: "Voyage scolaire", group: "Éducation" },
+  { value: "university_trip", label: "Voyage universitaire", group: "Éducation" },
+  { value: "educational_tour", label: "Visite éducative", group: "Éducation" },
+  { value: "student_transport", label: "Transport étudiant", group: "Éducation" },
+  { value: "school_competition", label: "Compétition scolaire", group: "Éducation" },
+
+  // Cérémonies & famille
+  { value: "wedding", label: "Mariage", group: "Cérémonies" },
+  { value: "funeral", label: "Funérailles", group: "Cérémonies" },
+  { value: "birthday", label: "Anniversaire", group: "Cérémonies" },
+  { value: "baptism", label: "Baptême", group: "Cérémonies" },
+  { value: "family_meeting", label: "Réunion de famille", group: "Cérémonies" },
+  { value: "pilgrimage", label: "Pèlerinage", group: "Cérémonies" },
+
+  // Pro / Officiel
+  { value: "conference", label: "Conférence", group: "Pro / Officiel" },
+  { value: "seminar", label: "Séminaire", group: "Pro / Officiel" },
+  { value: "company_trip", label: "Voyage d’entreprise", group: "Pro / Officiel" },
+  { value: "business_mission", label: "Mission professionnelle", group: "Pro / Officiel" },
+  { value: "staff_shuttle", label: "Navette du personnel", group: "Pro / Officiel" },
+  { value: "administrative_mission", label: "Mission administrative", group: "Pro / Officiel" },
+  { value: "official_trip", label: "Voyage officiel", group: "Pro / Officiel" },
+  { value: "election_campaign", label: "Campagne électorale", group: "Pro / Officiel" },
+
+  // Sport & Culture
+  { value: "football_match", label: "Match de football", group: "Sport & Culture" },
+  { value: "sports_tournament", label: "Tournoi sportif", group: "Sport & Culture" },
+  { value: "concert", label: "Concert", group: "Sport & Culture" },
+  { value: "festival", label: "Festival", group: "Sport & Culture" },
+
+  // Tourisme / Divers
+  { value: "tourist_trip", label: "Voyage touristique", group: "Tourisme / Divers" },
+  { value: "group_excursion", label: "Excursion de groupe", group: "Tourisme / Divers" },
+  { value: "site_visit", label: "Visite de site", group: "Tourisme / Divers" },
+  { value: "airport_transfer", label: "Transfert aéroport", group: "Tourisme / Divers" },
+  { value: "private_transport", label: "Transport privé", group: "Tourisme / Divers" },
+  { value: "special_event", label: "Événement spécial", group: "Tourisme / Divers" },
+  { value: "simple_rental", label: "Location simple", group: "Tourisme / Divers" },
+]
+
+function groupBy<T, K extends string | number | symbol>(arr: T[], key: (t: T) => K) {
+  return arr.reduce((acc, item) => {
+    const k = key(item)
+    ;(acc[k] ||= []).push(item)
+    return acc
+  }, {} as Record<K, T[]>)
+}
+
+function EventCombobox({
+  value,
+  onChange,
+}: {
+  value: EventType
+  onChange: (v: EventType) => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const current = EVENT_OPTIONS.find(o => o.value === value)
+  const grouped = React.useMemo(
+    () => groupBy(EVENT_OPTIONS, (o) => o.group ?? "Autres"),
+    []
+  )
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between"
+        >
+          <span className={cn("truncate", !current && "text-muted-foreground")}>
+            {current ? current.label : "Choisir un évènement"}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[calc(100vw-2rem)] sm:w-[420px]" align="start">
+        <Command>
+          <CommandInput placeholder="Rechercher un évènement…" />
+          <CommandList>
+            <CommandEmpty>Aucun évènement</CommandEmpty>
+            {Object.entries(grouped).map(([g, items]) => (
+              <CommandGroup key={g} heading={g}>
+                {items.map((opt) => {
+                  const selected = opt.value === value
+                  return (
+                    <CommandItem
+                      key={opt.value}
+                      value={opt.label}
+                      onSelect={() => { onChange(opt.value); setOpen(false) }}
+                      className="flex items-center justify-between"
+                    >
+                      <span>{opt.label}</span>
+                      {selected && <Check className="h-4 w-4 text-primary" />}
+                    </CommandItem>
+                  )
+                })}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/* ------------------------------ Date Picker -------------------------------- */
+
+function TripDatePicker({
+  value,
+  onChange,
+}: {
+  value: string | undefined
+  onChange: (isoDateYMD: string) => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const date = value ? new Date(value) : undefined
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-start text-left font-normal"
+        >
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {date ? format(date, "yyyy-MM-dd") : <span className="text-muted-foreground">Choisir une date</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={date}
+          onSelect={(d) => {
+            if (!d) return
+            const y = d.getFullYear()
+            const m = String(d.getMonth() + 1).padStart(2, "0")
+            const day = String(d.getDate()).padStart(2, "0")
+            onChange(`${y}-${m}-${day}`)
+            setOpen(false)
+          }}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 export default function AddEditReservationDialog({
@@ -567,7 +725,6 @@ export default function AddEditReservationDialog({
   const distanceKmDisplay = routeKm ?? havKm
   const busCount = busIds.length || 1
 
-
   React.useEffect(() => {
     let cancel = false
 
@@ -623,9 +780,7 @@ export default function AddEditReservationDialog({
     }
   }, [vehicleType, eventType, distanceKmDisplay, busIds]) // eslint-disable-line react-hooks/exhaustive-deps
 
-
   function handleSubmit() {
-    
     if (!form.passenger?.name || !form.passenger?.phone) {
       toast.error("Nom et téléphone du passager sont obligatoires.")
       return
@@ -634,7 +789,6 @@ export default function AddEditReservationDialog({
       toast.error("Sélectionnez au minimum un départ et une arrivée sur la carte.")
       return
     }
-
 
     const id = editing?.id ?? (crypto.randomUUID() as Reservation["id"])
     const code = editing?.code ?? `BZV-${String(Math.floor(Math.random() * 1000000)).padStart(6, "0")}`
@@ -737,10 +891,9 @@ export default function AddEditReservationDialog({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label>Date du trajet</Label>
-                <Input
-                  type="date"
+                <TripDatePicker
                   value={form.tripDate ?? ""}
-                  onChange={(e) => setField("tripDate", e.target.value as any)}
+                  onChange={(iso) => setField("tripDate", iso as any)}
                 />
               </div>
 
@@ -891,43 +1044,7 @@ export default function AddEditReservationDialog({
 
               <div className="grid gap-1.5">
                 <Label>Évènement</Label>
-                <select
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
-                  value={eventType}
-                  onChange={(e) => setEventType(e.target.value as EventType)}
-                >
-                    <option value="none">Aucun</option>
-                    <option value="school_trip">Voyage scolaire</option>
-                    <option value="university_trip">Voyage universitaire</option>
-                    <option value="educational_tour">Visite éducative</option>
-                    <option value="student_transport">Transport étudiant</option>
-                    <option value="wedding">Mariage</option>
-                    <option value="funeral">Funérailles</option>
-                    <option value="birthday">Anniversaire</option>
-                    <option value="baptism">Baptême</option>
-                    <option value="family_meeting">Réunion de famille</option>
-                    <option value="conference">Conférence</option>
-                    <option value="seminar">Séminaire</option>
-                    <option value="company_trip">Voyage d’entreprise</option>
-                    <option value="business_mission">Mission professionnelle</option>
-                    <option value="staff_shuttle">Navette du personnel</option>
-                    <option value="football_match">Match de football</option>
-                    <option value="sports_tournament">Tournoi sportif</option>
-                    <option value="concert">Concert</option>
-                    <option value="festival">Festival</option>
-                    <option value="school_competition">Compétition scolaire</option>
-                    <option value="tourist_trip">Voyage touristique</option>
-                    <option value="group_excursion">Excursion de groupe</option>
-                    <option value="pilgrimage">Pèlerinage</option>
-                    <option value="site_visit">Visite de site</option>
-                    <option value="airport_transfer">Transfert aéroport</option>
-                    <option value="election_campaign">Campagne électorale</option>
-                    <option value="administrative_mission">Mission administrative</option>
-                    <option value="official_trip">Voyage officiel</option>
-                    <option value="private_transport">Transport privé</option>
-                    <option value="special_event">Événement spécial</option>
-                    <option value="simple_rental">Location simple</option>
-                </select>
+                <EventCombobox value={eventType} onChange={setEventType} />
               </div>
 
               <div className="grid gap-1.5">
