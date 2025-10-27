@@ -65,6 +65,7 @@ const STATUS_LABELS: Record<ReservationStatus, string> = {
   cancelled: "Annulée",
 }
 
+type PayState = "paid" | "pending" | "failed" | "none"
 const PAYMENT_LABELS: Record<PayState, string> = {
   paid: "Payé",
   pending: "En attente",
@@ -111,60 +112,66 @@ const frStatus = (s?: ReservationStatus | null) => (s ? (STATUS_LABELS[s] ?? s) 
 const frEvent = (e?: string | null) => (e ? (EVENT_LABELS[e as EventType] ?? e) : "—")
 const frPayment = (p: PayState) => PAYMENT_LABELS[p] ?? p
 
-/* ------------------------------- utilities -------------------------------- */
+/* ------------------------------- date utils -------------------------------- */
 
-const TZ = "Africa/Nairobi"
+// Parse "YYYY-MM-DD HH:mm:ss", "YYYY-MM-DDTHH:mm:ss", or "YYYY-MM-DD" as LOCAL time (no TZ shift)
+function parseLocalDateTime(input?: string): Date | null {
+  if (!input) return null
+  const s = input.replace("T", " ").replace("Z", "").trim()
+  const m = s.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/
+  )
+  if (m) {
+    const [, y, mo, d, hh = "00", mm = "00", ss = "00"] = m
+    return new Date(
+      Number(y),
+      Number(mo) - 1,
+      Number(d),
+      Number(hh),
+      Number(mm),
+      Number(ss)
+    )
+  }
+  // Fallback to native parsing
+  const dt = new Date(input)
+  return isNaN(dt.getTime()) ? null : dt
+}
 
 const fmtMoney = (v?: number) => (typeof v === "number" ? `${v.toLocaleString("fr-FR")} FCFA` : "—")
 
-const shortDatetime = (iso?: string) => {
-  if (!iso) return "—"
-  try {
-    const d = new Date(iso)
-    return new Intl.DateTimeFormat("fr-FR", {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: TZ,
-    }).format(d)
-  } catch {
-    return iso
-  }
+const friendlyDateTime = (iso?: string) => {
+  const d = parseLocalDateTime(iso)
+  if (!d) return "—"
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(d)
 }
 
-// For group header labels (e.g., "lundi 27 octobre 2025")
 const dateHeaderLabel = (iso?: string) => {
-  if (!iso) return "—"
-  try {
-    const d = new Date(iso)
-    return new Intl.DateTimeFormat("fr-FR", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      timeZone: TZ,
-    }).format(d)
-  } catch {
-    return iso
-  }
+  const d = parseLocalDateTime(iso)
+  if (!d) return "—"
+  return d.toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  })
 }
 
-// For grouping key (YYYY-MM-DD)
-const dateKey = (iso?: string) => {
-  if (!iso) return "—"
-  try {
-    const d = new Date(iso)
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, "0")
-    const day = String(d.getDate()).padStart(2, "0")
-    return `${y}-${m}-${day}`
-  } catch {
-    return "—"
-  }
+const shortDatetime = (iso?: string) => {
+  const d = parseLocalDateTime(iso)
+  if (!d) return "—"
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(d)
 }
 
-type PayState = "paid" | "pending" | "failed" | "none"
-// No payments API yet — default to “none”
+/* ------------------------------- payments ---------------------------------- */
+
 function derivePaymentStatus(): PayState {
+  // No payments API yet — default to “none”
   return "none"
 }
 
@@ -202,13 +209,10 @@ export default function ReservationPage() {
     reload()
   }, [reload])
 
-  // Sort by createdAt desc (UUIDs → no natural order)
-  const sortedRows = React.useMemo(() => {
-    return [...rows].sort((a, b) => {
-      const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
-      const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
-      return db - da
-    })
+  // Sort by createdAt DESC (UUIDs are not sortable by time)
+  const rowsSorted = React.useMemo(() => {
+    const by = (x?: string) => (x ? parseLocalDateTime(x)?.getTime() ?? 0 : 0)
+    return [...rows].sort((a, b) => by(b.createdAt) - by(a.createdAt))
   }, [rows])
 
   // Map busId -> plate label
@@ -297,7 +301,9 @@ export default function ReservationPage() {
               <div className="grid gap-1">
                 <span className="text-muted-foreground">Trajet</span>
                 <div>{r.route?.from ?? "—"} → {r.route?.to ?? "—"}</div>
-                <div>Date du trajet : {shortDatetime(r.tripDate)}</div>
+                <div>
+                  Date : {friendlyDateTime(r.tripDate)}
+                </div>
                 {!!dist && <div>Distance : {dist.toLocaleString("fr-FR")} km</div>}
               </div>
 
@@ -318,13 +324,11 @@ export default function ReservationPage() {
         },
       }),
 
-      // NEW: Date column (friendly day, month, year, time) from tripDate
+      // Date (friendly)
       {
-        accessorKey: "tripDate",
+        id: "tripDate",
         header: "Date",
-        cell: ({ row }) => <span>{shortDatetime(row.original.tripDate)}</span>,
-        // If your DataTable supports sorting with accessorFn:
-        accessorFn: (row) => (row.tripDate ? new Date(row.tripDate).getTime() : 0),
+        cell: ({ row }) => friendlyDateTime(row.original.tripDate),
       },
 
       // Passager
@@ -411,12 +415,11 @@ export default function ReservationPage() {
     ]
   }, [busPlateById])
 
-  // Group by Date (by tripDate day)
   const groupBy: GroupByConfig<UIReservation>[] = [
     {
       id: "date",
       label: "Date",
-      // Return a friendly label (e.g., "lundi 27 octobre 2025") — this is also the grouping key.
+      // Group rows by a human-friendly day string (no TZ shift)
       accessor: (r: UIReservation) => dateHeaderLabel(r.tripDate),
     },
     {
@@ -427,6 +430,7 @@ export default function ReservationPage() {
     {
       id: "event",
       label: "Événements",
+      // Group label shown in French, value in data remains English.
       accessor: (r: UIReservation) => frEvent(r.event),
     },
   ]
@@ -438,14 +442,15 @@ export default function ReservationPage() {
     return (
       <>
         <DropdownMenuItem onClick={() => { setEditing(r); setOpen(true) }}>
-          <IconPencil className="mr-2 h-4 w-4" /> Modifier
+          Modifier
         </DropdownMenuItem>
 
         {!isCancelled && (
           <DropdownMenuItem
             onClick={async () => {
+              // optimistic status change
               const prev = rows
-              setRows((xs) => xs.map((x) => x.id === r.id ? { ...x, status: "cancelled" } as UIReservation : x))
+              setRows((xs) => xs.map((x) => (x.id === r.id ? { ...x, status: "cancelled" } as UIReservation : x)))
               try {
                 await reservationApi.setStatus(r.id, "cancelled")
                 toast("Réservation annulée")
@@ -465,6 +470,7 @@ export default function ReservationPage() {
         <DropdownMenuItem
           className="text-rose-600"
           onClick={async () => {
+            // optimistic delete (soft-delete)
             const prev = rows
             setRows((xs) => xs.filter((x) => x.id !== r.id))
             try {
@@ -477,12 +483,13 @@ export default function ReservationPage() {
             }
           }}
         >
-          <IconTrash className="mr-2 h-4 w-4" /> Supprimer
+          Supprimer
         </DropdownMenuItem>
       </>
     )
   }
 
+  // getRowId (typed id param if you use it elsewhere)
   const getRowId = (r: UIReservation) => String(r.id)
 
   return (
@@ -503,10 +510,10 @@ export default function ReservationPage() {
       </div>
 
       <DataTable<UIReservation>
-        data={sortedRows} // sorted by createdAt desc
+        data={rowsSorted}
         columns={columns}
         getRowId={getRowId}
-        searchable={{ placeholder: "Rechercher code, passager, téléphone, départ, arrivée…", fields: ["code"] }}
+        searchable={searchable}
         filters={filters}
         loading={loading}
         onAdd={() => { setEditing(null); setOpen(true) }}
@@ -538,13 +545,15 @@ export default function ReservationPage() {
         editing={editing}
         onSubmit={async (res) => {
           if (editing) {
+            // optimistic update
             const prev = rows
             setRows((xs) => xs.map((x) => (x.id === res.id ? { ...x, ...res } : x)))
             try {
               const apiRes = await reservationApi.update(res.id, res)
+              // server is source of truth (may compute fields)
               setRows((xs) => xs.map((x) => (x.id === res.id ? apiRes.data : x)))
               toast("Réservation mise à jour.")
-              await reload()
+              await reload() // hard refresh to pick up related data/aggregates
             } catch (e: any) {
               setRows(prev)
               toast.error(e?.message ?? "Échec de la mise à jour.")
@@ -552,22 +561,24 @@ export default function ReservationPage() {
               setEditing(null)
             }
           } else {
+            // optimistic add with temp id
             const tempId = res.id
-            const temp = { ...res, createdAt: new Date().toISOString() }
+            const temp = { ...res }
             setRows((xs) => [temp, ...xs])
             try {
               const apiRes = await reservationApi.create(res)
+              // swap temp by server row
               setRows((xs) => xs.map((x) => (x.id === tempId ? apiRes.data : x)))
               toast("Réservation ajoutée.")
-              await reload()
+              await reload() // ensure joins/computed fields are fresh
             } catch (e: any) {
               setRows((xs) => xs.filter((x) => x.id !== tempId))
               toast.error(e?.message ?? "Échec de la création.")
             }
           }
         }}
-        trips={[]}
-        buses={buses as unknown as any[]}
+        trips={[]} // no trips API wired yet; keep empty array
+        buses={buses as unknown as any[]} // used for MultiSelect (id+plate)
       />
 
       <ImportDialog<UIReservation>
@@ -577,7 +588,7 @@ export default function ReservationPage() {
         description="Chargez un CSV/Excel, mappez les colonnes, puis validez l'import."
         fields={[
           { key: "code", label: "Code" },
-          { key: "tripDate", label: "Date du trajet (ISO datetime)", required: true },
+          { key: "tripDate", label: "Date du trajet (YYYY-MM-DD HH:mm[:ss])", required: true },
           { key: "route.from", label: "Départ", required: true },
           { key: "route.to", label: "Arrivée", required: true },
           { key: "passenger.name", label: "Passager · Nom", required: true },
@@ -630,10 +641,12 @@ export default function ReservationPage() {
           return res
         }}
         onConfirm={async (imported) => {
+          // Optimistic batch add, then POST each
           const prev = rows
           setRows((xs) => [...imported, ...xs])
           try {
             const created = await Promise.all(imported.map((r) => reservationApi.create(r).then((x) => x.data)))
+            // Replace temps by server rows (match by code+tripDate+phone as fallback)
             const key = (r: UIReservation) =>
               r.code ? `code:${r.code}` : `npd:${(r.passenger?.name ?? "").toLowerCase()}|${r.passenger?.phone}|${r.tripDate}`
             setRows((xs) => {
