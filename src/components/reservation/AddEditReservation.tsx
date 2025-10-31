@@ -38,6 +38,7 @@ import { Info, Calendar as CalendarIcon, ChevronsUpDown, Check } from "lucide-re
 import { Calendar } from "@/components/ui/calendar"
 import { format } from "date-fns"
 import api from "@/api/apiService"
+import type { BusType } from "@/api/bus"
 
 type QuoteBreakdown = {
   base: number; motivation: number; event: number; majorated: number;
@@ -158,7 +159,7 @@ async function getDrivingRoute(pts: Waypoint[], token: string): Promise<Directio
 
 /* ------------------------------ UI Helpers -------------------------------- */
 
-type MultiSelectOption = { label: string; value: string }
+type MultiSelectOption = { label: string; value: string; type?: BusType }
 
 function EnvAlert({ message }: { message: string }) {
   return (
@@ -170,7 +171,6 @@ function EnvAlert({ message }: { message: string }) {
 }
 
 /* --------------------------- MultiSelect (buses) --------------------------- */
-
 function MultiSelectBuses({
   value,
   onChange,
@@ -179,11 +179,33 @@ function MultiSelectBuses({
 }: {
   value: string[]
   onChange: (ids: string[]) => void
-  options: MultiSelectOption[]
+  options: Array<MultiSelectOption>   // now includes optional `type`
   placeholder?: string
 }) {
   const [open, setOpen] = React.useState(false)
+  const [filter, setFilter] = React.useState<"all" | "hiace" | "coaster">("all")
   const selected = new Set(value)
+
+  // counts by type (for small badges in filter)
+  const counts = React.useMemo(() => {
+    let h = 0, c = 0
+    let ah = 0, ac = 0
+    options.forEach(o => {
+      if (o.type === "hiace") ah++
+      else if (o.type === "coaster") ac++
+    })
+    value.forEach(id => {
+      const t = options.find(o => o.value === id)?.type
+      if (t === "hiace") h++
+      else if (t === "coaster") c++
+    })
+    return { selected: { h, c }, available: { h: ah, c: ac } }
+  }, [options, value])
+
+  const filtered = React.useMemo(() => {
+    if (filter === "all") return options
+    return options.filter(o => (o.type === filter))
+  }, [options, filter])
 
   function toggle(val: string) {
     const next = new Set(selected)
@@ -216,40 +238,119 @@ function MultiSelectBuses({
               })
             )}
           </div>
-          <span className="ml-3 text-xs text-muted-foreground">{open ? "Fermer" : "Ouvrir"}</span>
+          <span className="ml-3 text-xs text-muted-foreground">
+            {open ? "Fermer" : "Ouvrir"}
+          </span>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[calc(100vw-2rem)] sm:w-[420px] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Chercher un bus…" />
-          <CommandList>
-            <CommandEmpty>Aucun résultat.</CommandEmpty>
-            <CommandGroup>
-              {options.map((opt) => {
-                const active = selected.has(opt.value)
-                return (
-                  <CommandItem
-                    key={opt.value}
-                    value={opt.label}
-                    onSelect={() => toggle(opt.value)}
-                    className="flex items-center justify-between"
-                  >
-                    <span>{opt.label}</span>
-                    {active ? (
-                      <span className="text-xs text-primary">Sélectionné</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Ajouter</span>
-                    )}
-                  </CommandItem>
-                )
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
+
+      <PopoverContent className="w-[calc(100vw-2rem)] sm:w-[480px] p-0" align="start">
+        <div className="flex flex-col">
+          {/* Sticky tools (search + type filter) */}
+          <div className="sticky top-0 z-10 bg-popover/80 backdrop-blur supports-[backdrop-filter]:bg-popover/60 border-b">
+            <div className="p-2">
+              <Command>
+                <CommandInput placeholder="Chercher un bus (plaque, nom…)" />
+              </Command>
+              <div className="mt-2 grid grid-cols-3 gap-2 sm:mt-3">
+                {([
+                  { key: "all", label: "Tous" },
+                  { key: "hiace", label: "Hiace" },
+                  { key: "coaster", label: "Coaster" },
+                ] as const).map(btn => {
+                  const active = filter === btn.key
+                  // small count badge (selected/available) for hiace & coaster
+                  const badge =
+                    btn.key === "hiace"
+                      ? `${counts.selected.h}/${counts.available.h}`
+                      : btn.key === "coaster"
+                      ? `${counts.selected.c}/${counts.available.c}`
+                      : undefined
+
+                  return (
+                    <button
+                      key={btn.key}
+                      type="button"
+                      onClick={() => setFilter(btn.key)}
+                      className={cn(
+                        "flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm",
+                        active ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"
+                      )}
+                    >
+                      <span>{btn.label}</span>
+                      {badge && (
+                        <span className={cn(
+                          "rounded-full px-2 py-0.5 text-[11px]",
+                          active ? "bg-primary-foreground/20" : "bg-muted text-foreground/70"
+                        )}>
+                          {badge}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* List */}
+          <div className="max-h-[320px] overflow-auto">
+            <Command>
+              <CommandList>
+                <CommandEmpty className="px-3 py-2">Aucun résultat.</CommandEmpty>
+                <CommandGroup>
+                  {filtered.map((opt) => {
+                    const active = selected.has(opt.value)
+                    return (
+                      <CommandItem
+                        key={opt.value}
+                        value={`${opt.label} ${opt.type ?? ""}`}
+                        onSelect={() => toggle(opt.value)}
+                        className="flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          {opt.type && (
+                            <Badge variant="outline" className="capitalize">
+                              {opt.type}
+                            </Badge>
+                          )}
+                          <span>{opt.label}</span>
+                        </div>
+                        {active ? (
+                          <span className="text-xs text-primary">Sélectionné</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Ajouter</span>
+                        )}
+                      </CommandItem>
+                    )
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </div>
+
+          {/* Footer actions */}
+          <div className="flex items-center justify-between gap-2 border-t p-2">
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="text-xs text-muted-foreground hover:underline"
+            >
+              Tout effacer
+            </button>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-xs">
+                {value.length} sélectionné{value.length > 1 ? "s" : ""}
+              </Badge>
+              <Button size="sm" onClick={() => setOpen(false)}>Fermer</Button>
+            </div>
+          </div>
+        </div>
       </PopoverContent>
     </Popover>
   )
 }
+
 
 /* --------------------------------- MapPicker -------------------------------- */
 
@@ -787,6 +888,27 @@ export default function AddEditReservationDialog({
 
   const [quote, setQuote] = React.useState<QuoteFull | null>(null)
 
+  // Build an index id -> type (lowercased)
+  const busTypeIndex = React.useMemo(() => {
+    const idx: Record<string, "hiace" | "coaster" | "unknown"> = {}
+    ;(buses ?? []).forEach(b => {
+      const t = String((b as any)?.type || "").toLowerCase()
+      idx[String(b.id)] = t === "hiace" || t === "coaster" ? (t as any) : "unknown"
+    })
+    return idx
+  }, [buses])
+
+  // Count helper
+  function countByType(ids: string[]) {
+    let h = 0, c = 0
+    ids.forEach(id => {
+      const t = busTypeIndex[id]
+      if (t === "hiace") h++
+      else if (t === "coaster") c++
+    })
+    return { h, c }
+  }
+
   const busOptions = React.useMemo<MultiSelectOption[]>(() => {
     const uniq: Record<string, boolean> = {}
     return (buses ?? [])
@@ -796,7 +918,12 @@ export default function AddEditReservationDialog({
         uniq[b.id] = true
         return true
       })
-      .map(b => ({ label: (b as any).plate || b.id, value: b.id }))
+      .map(b => ({
+        label: (b as any).plate || String(b.id),
+        value: String(b.id),
+        type: String((b as any)?.type || "")
+          .toLowerCase() as BusType || "other",
+      }))
   }, [buses])
 
   React.useEffect(() => {
@@ -818,7 +945,19 @@ export default function AddEditReservationDialog({
 
     // hydrate event selector from existing row (fallback to "none")
     setEventType(((editing as any)?.event as EventType) ?? "none")
-  }, [editing, open])
+
+    if (editing && Array.isArray(editing.busIds) && (editing.busIds as any[]).length > 0) {
+      let h = 0, c = 0
+      ;(editing.busIds as any[]).forEach(id => {
+        const t = busTypeIndex[String(id)]
+        if (t === "hiace") h++
+        else if (t === "coaster") c++
+      })
+      setHiaceCount(prev => Math.max(prev, h))
+      setCoasterCount(prev => Math.max(prev, c))
+    }
+
+  }, [editing, open, busTypeIndex])
 
   function setField<K extends keyof Reservation>(key: K, val: Reservation[K]) {
     setForm((prev) => ({ ...prev, [key]: val }))
@@ -845,83 +984,91 @@ export default function AddEditReservationDialog({
   const distanceKmDisplay = routeKm ?? havKm
   const busCount = busIds.length || 1
 
-React.useEffect(() => {
-  let cancelled = false
-  const seq = ++quoteReqSeq.current
+  // quoting effect
+  React.useEffect(() => {
+    let cancelled = false
+    const seq = ++quoteReqSeq.current
 
-  const distanceOk = Number.isFinite(distanceKmDisplay) && (distanceKmDisplay ?? 0) >= 0
-  const haveEvent = eventType !== undefined
-  const haveCounts = (hiaceCount > 0 || coasterCount > 0)
-  const canQuote = haveEvent && distanceOk && (busIds.length > 0 || haveCounts)
-
-  if (!canQuote) {
-    setQuote(null)
-    setField("priceTotal", 0 as any)
-    return
-  }
-
-  const t = setTimeout(async () => {
-    setQuoting(true)
-    try {
-      const distance = Number(distanceKmDisplay ?? 0)
-
-      let payload:
-        | { bus_ids: Array<number | string>; distance_km: number; event: EventType }
-        | { vehicles_map: Record<string, number>; distance_km: number; event: EventType }
-
-      if (busIds.length > 0) {
-        const ids = busIds.map((id) => {
-          const n = Number(id)
-          return Number.isFinite(n) ? n : (id as unknown as number)
-        })
-        payload = { bus_ids: ids, distance_km: distance, event: eventType }
-      } else {
-        const vehicles_map = buildVehiclesMap(hiaceCount, coasterCount)
-        payload = { vehicles_map, distance_km: distance, event: eventType }
-      }
-
-      const res = await api.post<{
-        currency: string
-        breakdown: {
-          base: number; motivation: number; event: number; majorated: number;
-          client_fees: number; client_raw: number; client_rounded: number;
-          commission: number; bus_base: number; bus_fees: number; bus_raw: number; bus_rounded: number;
-        }
-        client_payable: number
-        bus_payable: number
-        meta?: Record<string, unknown>
-      }, typeof payload>("/quote", payload)
-
-      if (cancelled || seq !== quoteReqSeq.current) return
-
-      const data = res.data
-      setQuote({
-        currency: data.currency,
-        breakdown: data.breakdown,
-        client_payable: data.client_payable,
-        bus_payable: data.bus_payable,
-        meta: data.meta ?? {},
-      })
-      setField("priceTotal", data.client_payable as any)
-      setQuoteCurrency(data.currency)
-    } catch (e: any) {
-      if (!cancelled && seq === quoteReqSeq.current) {
-        setQuote(null)
-        toast.error(e?.message ?? "Échec du calcul du tarif.")
-      }
-    } finally {
-      if (!cancelled && seq === quoteReqSeq.current) setQuoting(false)
+    const distanceOk = Number.isFinite(distanceKmDisplay) && (distanceKmDisplay ?? 0) >= 0
+    const haveCounts = (hiaceCount > 0 || coasterCount > 0)
+    if (!(haveCounts && distanceOk)) {
+      setQuote(null)
+      setField("priceTotal", 0 as any)
+      return
     }
-  }, 300)
 
-  return () => {
-    cancelled = true
-    clearTimeout(t)
+    const t = setTimeout(async () => {
+      setQuoting(true)
+      try {
+        const distance = Number(distanceKmDisplay ?? 0)
+        const vehicles_map = buildVehiclesMap(hiaceCount, coasterCount)
+        const res = await api.post<{
+          currency: string
+          breakdown: QuoteBreakdown
+          client_payable: number
+          bus_payable: number
+          meta?: Record<string, unknown>
+        }, { vehicles_map: Record<string, number>; distance_km: number; event: EventType }>(
+          "/quote",
+          { vehicles_map, distance_km: distance, event: eventType }
+        )
+
+        if (cancelled || seq !== quoteReqSeq.current) return
+        const data = res.data
+        setQuote({
+          currency: data.currency,
+          breakdown: data.breakdown,
+          client_payable: data.client_payable,
+          bus_payable: data.bus_payable,
+          meta: data.meta ?? {},
+        })
+        setField("priceTotal", data.client_payable as any)
+        setQuoteCurrency(data.currency)
+      } catch (e: any) {
+        if (!cancelled && seq === quoteReqSeq.current) {
+          setQuote(null)
+          toast.error(e?.message ?? "Échec du calcul du tarif.")
+        }
+      } finally {
+        if (!cancelled && seq === quoteReqSeq.current) setQuoting(false)
+      }
+    }, 300)
+
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [eventType, distanceKmDisplay, hiaceCount, coasterCount])
+
+  // Guarded setter for busIds (enforces caps)
+  function setBusIdsLimited(next: string[]) {
+    // detect newly added id
+    const added = next.find(id => !busIds.includes(id))
+    if (!added) { setBusIds(next); return }
+
+    const t = busTypeIndex[added]
+    const { h, c } = countByType(next)
+
+    // caps from the quoted counts
+    const capH = Math.max(0, hiaceCount|0)
+    const capC = Math.max(0, coasterCount|0)
+
+    if (t === "hiace" && h > capH) {
+      toast.error(`Vous ne pouvez pas dépasser ${capH} Hiace.`)
+      return
+    }
+    if (t === "coaster" && c > capC) {
+      toast.error(`Vous ne pouvez pas dépasser ${capC} Coaster.`)
+      return
+    }
+    if (t === "unknown") {
+      toast.error("Type de bus inconnu, impossible de valider cette sélection.")
+      return
+    }
+
+    setBusIds(next)
   }
-}, [eventType, distanceKmDisplay, busIds, hiaceCount, coasterCount]) // eslint-disable-line react-hooks/exhaustive-deps
 
-
-
+  const assigned = countByType(busIds)
+  const needH = Math.max(0, hiaceCount|0), needC = Math.max(0, coasterCount|0)
+  const ok = assigned.h === needH && assigned.c === needC
 
   function handleSubmit() {
     if (!form.passenger?.name || !form.passenger?.phone) {
@@ -1192,7 +1339,7 @@ React.useEffect(() => {
               <Label>Bus (multi-sélection)</Label>
               <MultiSelectBuses
                 value={busIds}
-                onChange={setBusIds}
+                onChange={setBusIdsLimited}
                 options={busOptions}
                 placeholder="Sélectionner des bus"
               />
@@ -1200,7 +1347,7 @@ React.useEffect(() => {
                 Les bus proviennent de votre parc (libellés = plaques).
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Si vous sélectionnez des bus, le calcul utilisera leurs types réels (mix Hiace/Coaster).
+                L’affectation doit respecter le nombre de Hiace/Coaster indiqués ci-dessus (pas de recalcul ici).
               </p>
             </div>
           </div>
@@ -1248,8 +1395,9 @@ React.useEffect(() => {
             {/* Detailed breakdown */}
             <div className="rounded-lg border">
               <div className="px-4 py-3 border-b text-sm font-medium">Détail du calcul</div>
+
               <div className="p-4 overflow-x-auto">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                {/* <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                   <div>
                     <div className="text-xs text-muted-foreground">Base</div>
                     <div className="font-medium">{fmtMoney(quote?.breakdown?.base ?? 0, quoteCurrency)}</div>
@@ -1300,9 +1448,9 @@ React.useEffect(() => {
                     <div className="text-xs text-muted-foreground">Bus arrondi</div>
                     <div className="font-medium">{fmtMoney(quote?.breakdown?.bus_rounded ?? 0, quoteCurrency)}</div>
                   </div>
-                </div>
+                </div> */}
 
-                {/* Optional meta for transparency/debug */}
+                {/* Vehicule Quote */}
                 {quote?.meta && (quote.meta as any)?.vehicles && (
                   <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm">
                     {Object.entries((quote.meta as any).vehicles).map(([type, v]: any) => (

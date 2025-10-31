@@ -3,7 +3,7 @@ import api, { buildQuery } from "@/api/apiService"
 /* ----------------------------- Server DTOs -------------------------------- */
 
 export type BusStatus = "active" | "maintenance" | "inactive"
-export type BusType = "sprinter" | "coach" | "minibus" | "hiace" | "coaster" | "bus"
+export type BusType = "sprinter" | "coach" | "minibus" | "hiace" | "coaster" | "bus" | "other"
 
 export type BusDto = {
   id: string // uuid
