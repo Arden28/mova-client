@@ -39,6 +39,34 @@ import { Calendar } from "@/components/ui/calendar"
 import { format } from "date-fns"
 import api from "@/api/apiService"
 
+type QuoteBreakdown = {
+  base: number
+  motivation: number
+  event: number
+  majorated: number
+  client_fees: number
+  client_raw: number
+  client_rounded: number
+  commission: number
+  bus_base: number
+  bus_fees: number
+  bus_raw: number
+  bus_rounded: number
+}
+
+type QuoteFull = {
+  currency: string
+  breakdown: QuoteBreakdown
+  client_payable: number
+  bus_payable: number
+  meta?: Record<string, unknown>
+}
+
+function fmtMoney(v: number | null | undefined, curr: string) {
+  const n = Number(v ?? 0)
+  return `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${curr}`
+}
+
 /* ----------------------------------------------------------------------------- 
    ENV
 ----------------------------------------------------------------------------- */
@@ -748,6 +776,8 @@ export default function AddEditReservationDialog({
   const [coasterCount, setCoasterCount] = React.useState<number>(0)
   const [quoting, setQuoting] = React.useState(false)
 
+  const [quote, setQuote] = React.useState<QuoteFull | null>(null)
+
   const busOptions = React.useMemo<MultiSelectOption[]>(() => {
     const uniq: Record<string, boolean> = {}
     return (buses ?? [])
@@ -817,57 +847,118 @@ export default function AddEditReservationDialog({
       distanceOk &&
       (
         (busIds.length > 0) // mixed path with selected buses
-        || anyVehicleCount  // pre-assignment pricing by type counts
+        || anyVehicleCount  // pre-assignment (counts per type)
       )
 
-    if (!canQuote) return
+    if (!canQuote) {
+      setQuote(null)
+      return
+    }
 
     const t = setTimeout(async () => {
       setQuoting(true)
       try {
         const distance = Number(distanceKmDisplay ?? 0)
 
+        // Helper to *call* quote for vehicle type or bus_ids
+        const callQuote = async (payload:
+          | { bus_ids: (number | string)[], distance_km: number, event: EventType }
+          | { vehicle_type: VehicleType, distance_km: number, event: EventType, buses: number }
+        ) => {
+          const res = await api.post<{
+            currency: string
+            breakdown: QuoteBreakdown
+            client_payable: number
+            bus_payable: number
+            meta?: Record<string, unknown>
+          }, typeof payload>("/quote", payload)
+          return res.data
+        }
+
         if (busIds.length > 0) {
-          // Mixed path using real vehicle types of selected buses
+          // Mixed path: single call returns one full quote
           const ids = busIds.map((id) => {
             const n = Number(id)
             return Number.isFinite(n) ? n : (id as unknown as number)
           })
-          const payload = {
-            bus_ids: ids,
-            distance_km: distance,
-            event: eventType,
-          }
-          const res = await api.post<QuoteResponse, typeof payload>("/quote", payload)
+          const data = await callQuote({ bus_ids: ids, distance_km: distance, event: eventType })
           if (cancel) return
-          setField("priceTotal", res.data.client_payable as any)
-          if (res.data?.currency) setQuoteCurrency(res.data.currency)
+          setField("priceTotal", data.client_payable as any)
+          setQuoteCurrency(data.currency)
+          setQuote({
+            currency: data.currency,
+            breakdown: data.breakdown,
+            client_payable: data.client_payable,
+            bus_payable: data.bus_payable,
+            meta: data.meta ?? {},
+          })
           return
         }
 
-        // No buses selected yet — sum two quotes (hiace + coaster)
-        let total = 0
-        let currency = quoteCurrency
-
-        // Helper to call and accumulate
-        const quoteType = async (vehicle_type: VehicleType, buses: number) => {
-          const payload = { vehicle_type, distance_km: distance, event: eventType, buses }
-          const res = await api.post<QuoteResponse, typeof payload>("/quote", payload)
-          total += Number(res.data.client_payable ?? 0)
-          if (res.data?.currency) currency = res.data.currency
+        // Pre-assignment: sum hiace + coaster
+        const parts: QuoteFull[] = []
+        if (hiaceCount > 0) {
+          const d = await callQuote({ vehicle_type: "hiace", distance_km: distance, event: eventType, buses: hiaceCount })
+          parts.push({
+            currency: d.currency,
+            breakdown: d.breakdown,
+            client_payable: d.client_payable,
+            bus_payable: d.bus_payable,
+            meta: d.meta ?? {},
+          })
+        }
+        if (coasterCount > 0) {
+          const d = await callQuote({ vehicle_type: "coaster", distance_km: distance, event: eventType, buses: coasterCount })
+          parts.push({
+            currency: d.currency,
+            breakdown: d.breakdown,
+            client_payable: d.client_payable,
+            bus_payable: d.bus_payable,
+            meta: d.meta ?? {},
+          })
         }
 
-        const tasks: Promise<void>[] = []
-        if (hiaceCount > 0) tasks.push(quoteType("hiace", hiaceCount))
-        if (coasterCount > 0) tasks.push(quoteType("coaster", coasterCount))
-
-        if (tasks.length) await Promise.all(tasks)
-
         if (cancel) return
-        setField("priceTotal", total as any)
+        // Aggregate (sum every numeric field)
+        const sumNum = (a: number, b: number) => Number(a || 0) + Number(b || 0)
+        const agg = parts.reduce<QuoteFull | null>((acc, cur) => {
+          if (!acc) return { ...cur }
+          const bd = acc.breakdown
+          const cd = cur.breakdown
+          const merged: QuoteBreakdown = {
+            base:            sumNum(bd.base,            cd.base),
+            motivation:      sumNum(bd.motivation,      cd.motivation),
+            event:           sumNum(bd.event,           cd.event),
+            majorated:       sumNum(bd.majorated,       cd.majorated),
+            client_fees:     sumNum(bd.client_fees,     cd.client_fees),
+            client_raw:      sumNum(bd.client_raw,      cd.client_raw),
+            client_rounded:  sumNum(bd.client_rounded,  cd.client_rounded),
+            commission:      sumNum(bd.commission,      cd.commission),
+            bus_base:        sumNum(bd.bus_base,        cd.bus_base),
+            bus_fees:        sumNum(bd.bus_fees,        cd.bus_fees),
+            bus_raw:         sumNum(bd.bus_raw,         cd.bus_raw),
+            bus_rounded:     sumNum(bd.bus_rounded,     cd.bus_rounded),
+          }
+          return {
+            currency: cur.currency || acc.currency,
+            breakdown: merged,
+            client_payable: sumNum(acc.client_payable, cur.client_payable),
+            bus_payable:    sumNum(acc.bus_payable,    cur.bus_payable),
+            meta: { ...(acc.meta ?? {}), ...(cur.meta ?? {}) },
+          }
+        }, null)
+
+        const currency = agg?.currency ?? quoteCurrency
+        const totalClient = agg?.client_payable ?? 0
+
+        setField("priceTotal", totalClient as any)
         setQuoteCurrency(currency)
+        setQuote(agg)
       } catch (e: any) {
-        if (!cancel) toast.error(e?.message ?? "Échec du calcul du tarif.")
+        if (!cancel) {
+          setQuote(null)
+          toast.error(e?.message ?? "Échec du calcul du tarif.")
+        }
       } finally {
         if (!cancel) setQuoting(false)
       }
@@ -884,6 +975,7 @@ export default function AddEditReservationDialog({
     hiaceCount,
     coasterCount,
   ]) // eslint-disable-line react-hooks/exhaustive-deps
+
 
 
   function handleSubmit() {
@@ -1170,8 +1262,134 @@ export default function AddEditReservationDialog({
 
           <Separator />
 
+          {/* Récapitulatif tarifaire */}
+          <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground">
+                Récapitulatif tarifaire
+              </h3>
+              {quoting && <Badge variant="secondary">Calcul en cours…</Badge>}
+            </div>
+
+            {/* 3 key figures */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-lg border p-4">
+                <div className="text-xs text-muted-foreground">Total client</div>
+                <div className="mt-1 text-2xl font-semibold">
+                  {fmtMoney(quote?.client_payable ?? form.priceTotal ?? 0, quoteCurrency)}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Montant payé par le client</p>
+              </div>
+
+              <div className="rounded-lg border p-4">
+                <div className="text-xs text-muted-foreground">Part bus</div>
+                <div className="mt-1 text-2xl font-semibold">
+                  {fmtMoney(quote?.bus_payable ?? 0, quoteCurrency)}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Réparti entre les bus affectés
+                </p>
+              </div>
+
+              <div className="rounded-lg border p-4">
+                <div className="text-xs text-muted-foreground">Commission</div>
+                <div className="mt-1 text-2xl font-semibold">
+                  {fmtMoney(quote?.breakdown?.commission ?? 0, quoteCurrency)}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Notre rémunération</p>
+              </div>
+            </div>
+
+            {/* Detailed breakdown */}
+            <div className="rounded-lg border">
+              <div className="px-4 py-3 border-b text-sm font-medium">Détail du calcul</div>
+              <div className="p-4 overflow-x-auto">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Base</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.base ?? 0, quoteCurrency)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Motivation</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.motivation ?? 0, quoteCurrency)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Évènement</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.event ?? 0, quoteCurrency)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Majoration</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.majorated ?? 0, quoteCurrency)}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-muted-foreground">Frais client</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.client_fees ?? 0, quoteCurrency)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Client brut</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.client_raw ?? 0, quoteCurrency)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Client arrondi</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.client_rounded ?? form.priceTotal ?? 0, quoteCurrency)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Commission</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.commission ?? 0, quoteCurrency)}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-muted-foreground">Base bus</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.bus_base ?? 0, quoteCurrency)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Frais bus</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.bus_fees ?? 0, quoteCurrency)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Bus brut</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.bus_raw ?? 0, quoteCurrency)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Bus arrondi</div>
+                    <div className="font-medium">{fmtMoney(quote?.breakdown?.bus_rounded ?? 0, quoteCurrency)}</div>
+                  </div>
+                </div>
+
+                {/* Optional meta for transparency/debug */}
+                {quote?.meta && Object.keys(quote.meta).length > 0 && (
+                  <div className="mt-4 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+                    <div className="font-medium mb-1">Meta</div>
+                    <pre className="whitespace-pre-wrap">{JSON.stringify(quote.meta, null, 2)}</pre>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* (Optional) Status controls — keep if you still want workflow state */}
+            <div className="grid gap-1.5">
+              <Label>Statut</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {["pending", "confirmed", "cancelled"].map((s) => (
+                  <Button
+                    key={s}
+                    type="button"
+                    variant={(form.status ?? "pending") === s ? "default" : "outline"}
+                    onClick={() => setField("status", s as any)}
+                  >
+                    {s === "pending" && "En attente"}
+                    {s === "confirmed" && "Confirmée"}
+                    {s === "cancelled" && "Annulée"}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+
           {/* Détails réservation */}
-          <div className="space-y-3 py-4">
+          {/* <div className="space-y-3 py-4">
             <h3 className="text-sm font-medium text-muted-foreground">Détails de la réservation</h3>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
@@ -1237,7 +1455,7 @@ export default function AddEditReservationDialog({
                 </div>
               </div>
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* Footer */}
