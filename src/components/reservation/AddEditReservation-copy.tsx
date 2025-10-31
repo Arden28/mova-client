@@ -810,62 +810,44 @@ export default function AddEditReservationDialog({
     let cancel = false
 
     const distanceOk = Number.isFinite(distanceKmDisplay) && (distanceKmDisplay ?? 0) >= 0
-    const haveEvent = eventType !== undefined
-    const anyVehicleCount = (hiaceCount > 0 || coasterCount > 0)
-    const canQuote =
-      haveEvent &&
-      distanceOk &&
-      (
-        (busIds.length > 0) // mixed path with selected buses
-        || anyVehicleCount  // pre-assignment pricing by type counts
-      )
+    const canQuote = eventType !== undefined && distanceOk && (busIds.length > 0 || !!vehicleType)
 
     if (!canQuote) return
 
     const t = setTimeout(async () => {
       setQuoting(true)
       try {
-        const distance = Number(distanceKmDisplay ?? 0)
+        // Prefer mixed-vehicle path when user selected specific buses
+        let payload:
+          | { bus_ids: number[]; distance_km: number; event: EventType }
+          | { vehicle_type: VehicleType; distance_km: number; event: EventType; buses: number }
 
         if (busIds.length > 0) {
-          // Mixed path using real vehicle types of selected buses
+          // Convert IDs to numbers if possible; leave as-is if not
           const ids = busIds.map((id) => {
             const n = Number(id)
             return Number.isFinite(n) ? n : (id as unknown as number)
           })
-          const payload = {
+          payload = {
             bus_ids: ids,
-            distance_km: distance,
+            distance_km: Number(distanceKmDisplay ?? 0),
             event: eventType,
           }
-          const res = await api.post<QuoteResponse, typeof payload>("/quote", payload)
-          if (cancel) return
-          setField("priceTotal", res.data.client_payable as any)
-          if (res.data?.currency) setQuoteCurrency(res.data.currency)
-          return
+        } else {
+          // Legacy single-type path
+          const busesCount = Math.max(1, Number(busCount || 1))
+          payload = {
+            vehicle_type: vehicleType,
+            distance_km: Number(distanceKmDisplay ?? 0),
+            event: eventType,
+            buses: busesCount,
+          }
         }
 
-        // No buses selected yet — sum two quotes (hiace + coaster)
-        let total = 0
-        let currency = quoteCurrency
-
-        // Helper to call and accumulate
-        const quoteType = async (vehicle_type: VehicleType, buses: number) => {
-          const payload = { vehicle_type, distance_km: distance, event: eventType, buses }
-          const res = await api.post<QuoteResponse, typeof payload>("/quote", payload)
-          total += Number(res.data.client_payable ?? 0)
-          if (res.data?.currency) currency = res.data.currency
-        }
-
-        const tasks: Promise<void>[] = []
-        if (hiaceCount > 0) tasks.push(quoteType("hiace", hiaceCount))
-        if (coasterCount > 0) tasks.push(quoteType("coaster", coasterCount))
-
-        if (tasks.length) await Promise.all(tasks)
-
+        const res = await api.post<QuoteResponse, typeof payload>("/quote", payload)
         if (cancel) return
-        setField("priceTotal", total as any)
-        setQuoteCurrency(currency)
+        setField("priceTotal", res.data.client_payable as any)
+        if (res.data?.currency) setQuoteCurrency(res.data.currency)
       } catch (e: any) {
         if (!cancel) toast.error(e?.message ?? "Échec du calcul du tarif.")
       } finally {
@@ -877,14 +859,7 @@ export default function AddEditReservationDialog({
       cancel = true
       clearTimeout(t)
     }
-  }, [
-    eventType,
-    distanceKmDisplay,
-    busIds,
-    hiaceCount,
-    coasterCount,
-  ]) // eslint-disable-line react-hooks/exhaustive-deps
-
+  }, [vehicleType, eventType, distanceKmDisplay, busIds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSubmit() {
     if (!form.passenger?.name || !form.passenger?.phone) {
@@ -1086,65 +1061,6 @@ export default function AddEditReservationDialog({
               </div>
             </div>
           </div>
-
-          <Separator />
-
-          {/* Tarification (avant affectation des bus) */}
-          <div className="space-y-3 py-4">
-            <h3 className="text-sm font-medium text-muted-foreground">Tarification (avant affectation des bus)</h3>
-
-            {/* Hiace (left) & Coaster (right) */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label>Hiace (nombre de bus)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={hiaceCount}
-                  onChange={(e) => setHiaceCount(Math.max(0, Number(e.target.value || 0)))}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label>Coaster (nombre de bus)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={coasterCount}
-                  onChange={(e) => setCoasterCount(Math.max(0, Number(e.target.value || 0)))}
-                />
-              </div>
-            </div>
-
-            {/* Event & Total (underneath) */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label>Évènement</Label>
-                <EventCombobox value={eventType} onChange={setEventType} />
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label>Total</Label>
-                <div className="relative">
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.priceTotal ?? 0}
-                    onChange={(e) => setField("priceTotal", Number(e.target.value) as any)}
-                    className="pr-16"
-                    readOnly
-                  />
-                  <div className="pointer-events-none absolute inset-y-0 right-0 grid w-16 place-items-center text-xs text-muted-foreground">
-                    {quoteCurrency}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Définissez le nombre de bus par type pour obtenir un tarif indicatif. Après accord client, affectez les bus disponibles ci-dessous.
-            </p>
-          </div>
-
 
           <Separator />
 
