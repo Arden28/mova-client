@@ -40,32 +40,38 @@ import { format } from "date-fns"
 import api from "@/api/apiService"
 
 type QuoteBreakdown = {
-  base: number
-  motivation: number
-  event: number
-  majorated: number
-  client_fees: number
-  client_raw: number
-  client_rounded: number
-  commission: number
-  bus_base: number
-  bus_fees: number
-  bus_raw: number
-  bus_rounded: number
+  base: number; motivation: number; event: number; majorated: number;
+  client_fees: number; client_raw: number; client_rounded: number;
+  commission: number; bus_base: number; bus_fees: number; bus_raw: number; bus_rounded: number;
 }
-
 type QuoteFull = {
-  currency: string
-  breakdown: QuoteBreakdown
-  client_payable: number
-  bus_payable: number
-  meta?: Record<string, unknown>
+  currency: string;
+  breakdown: QuoteBreakdown;
+  client_payable: number;
+  bus_payable: number;
+  meta?: Record<string, unknown>;
 }
-
 function fmtMoney(v: number | null | undefined, curr: string) {
   const n = Number(v ?? 0)
   return `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${curr}`
 }
+// build the vehicles[] array the API expects (repeat by count)
+function buildVehiclesArray(hiace: number, coaster: number) {
+  const arr: string[] = []
+  for (let i = 0; i < Math.max(0, hiace|0); i++) arr.push("hiace")
+  for (let i = 0; i < Math.max(0, coaster|0); i++) arr.push("coaster")
+  return arr
+}
+
+function buildVehiclesMap(hiace: number, coaster: number) {
+  const map: Record<string, number> = {}
+  const h = Math.max(0, Math.floor(Number(hiace || 0)))
+  const c = Math.max(0, Math.floor(Number(coaster || 0)))
+  if (h > 0) map.hiace = h
+  if (c > 0) map.coaster = c
+  return map
+}
+
 
 /* ----------------------------------------------------------------------------- 
    ENV
@@ -774,6 +780,9 @@ export default function AddEditReservationDialog({
   const [quoteCurrency, setQuoteCurrency] = React.useState<string>("FCFA")
   const [hiaceCount, setHiaceCount] = React.useState<number>(0)
   const [coasterCount, setCoasterCount] = React.useState<number>(0)
+
+  // prevent stale responses from overwriting fresh ones
+  const quoteReqSeq = React.useRef(0)
   const [quoting, setQuoting] = React.useState(false)
 
   const [quote, setQuote] = React.useState<QuoteFull | null>(null)
@@ -836,145 +845,81 @@ export default function AddEditReservationDialog({
   const distanceKmDisplay = routeKm ?? havKm
   const busCount = busIds.length || 1
 
-  React.useEffect(() => {
-    let cancel = false
+React.useEffect(() => {
+  let cancelled = false
+  const seq = ++quoteReqSeq.current
 
-    const distanceOk = Number.isFinite(distanceKmDisplay) && (distanceKmDisplay ?? 0) >= 0
-    const haveEvent = eventType !== undefined
-    const anyVehicleCount = (hiaceCount > 0 || coasterCount > 0)
-    const canQuote =
-      haveEvent &&
-      distanceOk &&
-      (
-        (busIds.length > 0) // mixed path with selected buses
-        || anyVehicleCount  // pre-assignment (counts per type)
-      )
+  const distanceOk = Number.isFinite(distanceKmDisplay) && (distanceKmDisplay ?? 0) >= 0
+  const haveEvent = eventType !== undefined
+  const haveCounts = (hiaceCount > 0 || coasterCount > 0)
+  const canQuote = haveEvent && distanceOk && (busIds.length > 0 || haveCounts)
 
-    if (!canQuote) {
-      setQuote(null)
-      return
-    }
+  if (!canQuote) {
+    setQuote(null)
+    setField("priceTotal", 0 as any)
+    return
+  }
 
-    const t = setTimeout(async () => {
-      setQuoting(true)
-      try {
-        const distance = Number(distanceKmDisplay ?? 0)
+  const t = setTimeout(async () => {
+    setQuoting(true)
+    try {
+      const distance = Number(distanceKmDisplay ?? 0)
 
-        // Helper to *call* quote for vehicle type or bus_ids
-        const callQuote = async (payload:
-          | { bus_ids: (number | string)[], distance_km: number, event: EventType }
-          | { vehicle_type: VehicleType, distance_km: number, event: EventType, buses: number }
-        ) => {
-          const res = await api.post<{
-            currency: string
-            breakdown: QuoteBreakdown
-            client_payable: number
-            bus_payable: number
-            meta?: Record<string, unknown>
-          }, typeof payload>("/quote", payload)
-          return res.data
-        }
+      let payload:
+        | { bus_ids: Array<number | string>; distance_km: number; event: EventType }
+        | { vehicles_map: Record<string, number>; distance_km: number; event: EventType }
 
-        if (busIds.length > 0) {
-          // Mixed path: single call returns one full quote
-          const ids = busIds.map((id) => {
-            const n = Number(id)
-            return Number.isFinite(n) ? n : (id as unknown as number)
-          })
-          const data = await callQuote({ bus_ids: ids, distance_km: distance, event: eventType })
-          if (cancel) return
-          setField("priceTotal", data.client_payable as any)
-          setQuoteCurrency(data.currency)
-          setQuote({
-            currency: data.currency,
-            breakdown: data.breakdown,
-            client_payable: data.client_payable,
-            bus_payable: data.bus_payable,
-            meta: data.meta ?? {},
-          })
-          return
-        }
-
-        // Pre-assignment: sum hiace + coaster
-        const parts: QuoteFull[] = []
-        if (hiaceCount > 0) {
-          const d = await callQuote({ vehicle_type: "hiace", distance_km: distance, event: eventType, buses: hiaceCount })
-          parts.push({
-            currency: d.currency,
-            breakdown: d.breakdown,
-            client_payable: d.client_payable,
-            bus_payable: d.bus_payable,
-            meta: d.meta ?? {},
-          })
-        }
-        if (coasterCount > 0) {
-          const d = await callQuote({ vehicle_type: "coaster", distance_km: distance, event: eventType, buses: coasterCount })
-          parts.push({
-            currency: d.currency,
-            breakdown: d.breakdown,
-            client_payable: d.client_payable,
-            bus_payable: d.bus_payable,
-            meta: d.meta ?? {},
-          })
-        }
-
-        if (cancel) return
-        // Aggregate (sum every numeric field)
-        const sumNum = (a: number, b: number) => Number(a || 0) + Number(b || 0)
-        const agg = parts.reduce<QuoteFull | null>((acc, cur) => {
-          if (!acc) return { ...cur }
-          const bd = acc.breakdown
-          const cd = cur.breakdown
-          const merged: QuoteBreakdown = {
-            base:            sumNum(bd.base,            cd.base),
-            motivation:      sumNum(bd.motivation,      cd.motivation),
-            event:           sumNum(bd.event,           cd.event),
-            majorated:       sumNum(bd.majorated,       cd.majorated),
-            client_fees:     sumNum(bd.client_fees,     cd.client_fees),
-            client_raw:      sumNum(bd.client_raw,      cd.client_raw),
-            client_rounded:  sumNum(bd.client_rounded,  cd.client_rounded),
-            commission:      sumNum(bd.commission,      cd.commission),
-            bus_base:        sumNum(bd.bus_base,        cd.bus_base),
-            bus_fees:        sumNum(bd.bus_fees,        cd.bus_fees),
-            bus_raw:         sumNum(bd.bus_raw,         cd.bus_raw),
-            bus_rounded:     sumNum(bd.bus_rounded,     cd.bus_rounded),
-          }
-          return {
-            currency: cur.currency || acc.currency,
-            breakdown: merged,
-            client_payable: sumNum(acc.client_payable, cur.client_payable),
-            bus_payable:    sumNum(acc.bus_payable,    cur.bus_payable),
-            meta: { ...(acc.meta ?? {}), ...(cur.meta ?? {}) },
-          }
-        }, null)
-
-        const currency = agg?.currency ?? quoteCurrency
-        const totalClient = agg?.client_payable ?? 0
-
-        setField("priceTotal", totalClient as any)
-        setQuoteCurrency(currency)
-        setQuote(agg)
-      } catch (e: any) {
-        if (!cancel) {
-          setQuote(null)
-          toast.error(e?.message ?? "Échec du calcul du tarif.")
-        }
-      } finally {
-        if (!cancel) setQuoting(false)
+      if (busIds.length > 0) {
+        const ids = busIds.map((id) => {
+          const n = Number(id)
+          return Number.isFinite(n) ? n : (id as unknown as number)
+        })
+        payload = { bus_ids: ids, distance_km: distance, event: eventType }
+      } else {
+        const vehicles_map = buildVehiclesMap(hiaceCount, coasterCount)
+        payload = { vehicles_map, distance_km: distance, event: eventType }
       }
-    }, 400)
 
-    return () => {
-      cancel = true
-      clearTimeout(t)
+      const res = await api.post<{
+        currency: string
+        breakdown: {
+          base: number; motivation: number; event: number; majorated: number;
+          client_fees: number; client_raw: number; client_rounded: number;
+          commission: number; bus_base: number; bus_fees: number; bus_raw: number; bus_rounded: number;
+        }
+        client_payable: number
+        bus_payable: number
+        meta?: Record<string, unknown>
+      }, typeof payload>("/quote", payload)
+
+      if (cancelled || seq !== quoteReqSeq.current) return
+
+      const data = res.data
+      setQuote({
+        currency: data.currency,
+        breakdown: data.breakdown,
+        client_payable: data.client_payable,
+        bus_payable: data.bus_payable,
+        meta: data.meta ?? {},
+      })
+      setField("priceTotal", data.client_payable as any)
+      setQuoteCurrency(data.currency)
+    } catch (e: any) {
+      if (!cancelled && seq === quoteReqSeq.current) {
+        setQuote(null)
+        toast.error(e?.message ?? "Échec du calcul du tarif.")
+      }
+    } finally {
+      if (!cancelled && seq === quoteReqSeq.current) setQuoting(false)
     }
-  }, [
-    eventType,
-    distanceKmDisplay,
-    busIds,
-    hiaceCount,
-    coasterCount,
-  ]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, 300)
+
+  return () => {
+    cancelled = true
+    clearTimeout(t)
+  }
+}, [eventType, distanceKmDisplay, busIds, hiaceCount, coasterCount]) // eslint-disable-line react-hooks/exhaustive-deps
+
 
 
 
@@ -1193,7 +1138,7 @@ export default function AddEditReservationDialog({
                   type="number"
                   min={0}
                   value={hiaceCount}
-                  onChange={(e) => setHiaceCount(Math.max(0, Number(e.target.value || 0)))}
+                  onChange={(e) => setHiaceCount(Math.max(0, Math.floor(Number(e.target.value || 0))))}
                 />
               </div>
               <div className="grid gap-1.5">
@@ -1202,7 +1147,7 @@ export default function AddEditReservationDialog({
                   type="number"
                   min={0}
                   value={coasterCount}
-                  onChange={(e) => setCoasterCount(Math.max(0, Number(e.target.value || 0)))}
+                  onChange={(e) => setCoasterCount(Math.max(0, Math.floor(Number(e.target.value || 0))))}
                 />
               </div>
             </div>
@@ -1358,10 +1303,18 @@ export default function AddEditReservationDialog({
                 </div>
 
                 {/* Optional meta for transparency/debug */}
-                {quote?.meta && Object.keys(quote.meta).length > 0 && (
-                  <div className="mt-4 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
-                    <div className="font-medium mb-1">Meta</div>
-                    <pre className="whitespace-pre-wrap">{JSON.stringify(quote.meta, null, 2)}</pre>
+                {quote?.meta && (quote.meta as any)?.vehicles && (
+                  <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm">
+                    {Object.entries((quote.meta as any).vehicles).map(([type, v]: any) => (
+                      <div key={type} className="rounded-md border p-3">
+                        <div className="text-xs text-muted-foreground capitalize">{type}</div>
+                        <div className="mt-1 flex flex-wrap gap-6">
+                          <span>Nb: <b>{v.count}</b></span>
+                          <span>Base: <b>{fmtMoney(v.base, quoteCurrency)}</b></span>
+                          <span>Motivation: <b>{fmtMoney(v.motivation, quoteCurrency)}</b></span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
