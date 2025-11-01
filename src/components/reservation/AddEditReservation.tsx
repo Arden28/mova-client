@@ -1384,7 +1384,7 @@ export default function AddEditReservationDialog({
               </div>
 
               <div className="rounded-lg border p-4">
-                <div className="text-xs text-muted-foreground">Commission</div>
+                <div className="text-xs text-muted-foreground">Commission </div>
                 <div className="mt-1 text-2xl font-semibold">
                   {fmtMoney(quote?.breakdown?.commission ?? 0, quoteCurrency)}
                 </div>
