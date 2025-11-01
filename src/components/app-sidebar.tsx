@@ -3,7 +3,7 @@
 
 import * as React from "react"
 import { NavLink } from "react-router-dom"
-import { IconGauge, IconSettings, IconBell } from "@tabler/icons-react"
+import { IconGauge, IconBell } from "@tabler/icons-react"
 
 import useAuth from "@/hooks/useAuth"
 import { NavUser } from "@/components/nav-user"
@@ -197,22 +197,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               </PopoverContent>
             </Popover>
           </SidebarMenuItem>
-
-          {/* Settings (icon only) — admin only */}
-          {isAdmin && (
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                className="justify-center p-2"
-                tooltip="Paramètres"
-              >
-                <NavLink to="/settings" aria-label="Paramètres" title="Paramètres">
-                  <IconSettings className="h-5 w-5" />
-                  <span className="sr-only">Paramètres</span>
-                </NavLink>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )}
 
           {/* User avatar (dropdown intact) */}
           <SidebarMenuItem>
