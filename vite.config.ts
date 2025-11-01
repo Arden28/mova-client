@@ -11,6 +11,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Explicit base for Vercel (root deploy)
+  base: "/",
+  build: { outDir: "dist" },
   server: {
     host: true,       // bind to 0.0.0.0 (also fixes some WSL/host issues)
     port: 5173,
