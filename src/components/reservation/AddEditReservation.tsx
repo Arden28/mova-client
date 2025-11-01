@@ -1397,7 +1397,7 @@ export default function AddEditReservationDialog({
               <div className="px-4 py-3 border-b text-sm font-medium">Détail du calcul</div>
 
               <div className="p-4 overflow-x-auto">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                {/* <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                   <div>
                     <div className="text-xs text-muted-foreground">Base</div>
                     <div className="font-medium">{fmtMoney(quote?.breakdown?.base ?? 0, quoteCurrency)}</div>
@@ -1448,7 +1448,7 @@ export default function AddEditReservationDialog({
                     <div className="text-xs text-muted-foreground">Bus arrondi</div>
                     <div className="font-medium">{fmtMoney(quote?.breakdown?.bus_rounded ?? 0, quoteCurrency)}</div>
                   </div>
-                </div>
+                </div> */}
 
                 {/* Vehicule Quote */}
                 {quote?.meta && (quote.meta as any)?.vehicles && (
