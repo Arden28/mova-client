@@ -17,7 +17,7 @@ import ImportDialog from "@/components/common/ImportDialog"
 import AddEditReservationDialog from "@/components/reservation/AddEditReservation"
 
 // API clients
-import reservationApi, { type UIReservation, type ReservationStatus } from "@/api/reservation"
+import reservationApi, { type UIReservation, type ReservationStatus, type ReservationEvent } from "@/api/reservation"
 import busApi, { type UIBus } from "@/api/bus"
 import { Button } from "@/components/ui/button"
 import { Link } from "react-router-dom"
@@ -155,6 +155,46 @@ const shortDatetime = (iso?: string) => {
 function derivePaymentStatus(): "paid" | "pending" | "failed" | "none" {
   return "none"
 }
+
+/* ------------------------------- update helpers ------------------------------ */
+
+
+// Remove undefined keys (null is kept so backend can clear nullable fields)
+function pruneUndefined<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as Partial<T>
+}
+
+/** Build a Partial<UIReservation> for update; API layer maps it to snake_case. */
+function serializeReservationForUpdate(r: UIReservation): Partial<UIReservation> {
+  // If email is "", keep it as "" so reservation.ts -> toPayload() converts it to null.
+  const email =
+    r.passenger?.email === "" ? "" : r.passenger?.email ?? undefined
+
+  const out: Partial<UIReservation> = {
+    code: r.code ?? undefined,
+    tripDate: r.tripDate ?? undefined,
+    route: r.route ?? undefined,
+    passenger: r.passenger
+      ? {
+          name: r.passenger.name ?? "",
+          phone: r.passenger.phone ?? "",
+          email,
+        }
+      : undefined,
+    seats: r.seats ?? undefined,
+    priceTotal: r.priceTotal ?? undefined,
+    status: r.status ?? undefined,
+    event: (r.event as ReservationEvent | undefined) ?? undefined,
+    waypoints: r.waypoints ?? undefined,
+    distanceKm: r.distanceKm ?? undefined,
+    busIds: r.busIds ?? undefined, // reservation.ts will coerce to ints
+  }
+
+  return pruneUndefined(out)
+}
+
 
 /* --------------------------------- Page ----------------------------------- */
 
@@ -419,7 +459,8 @@ export default function ReservationPage() {
             const prev = rows
             setRows((xs) => xs.map((x) => (x.id === res.id ? { ...x, ...res } : x)))
             try {
-              const apiRes = await reservationApi.update(res.id, res)
+              const payload = serializeReservationForUpdate(res)
+              const apiRes = await reservationApi.update(res.id, payload)
               setRows((xs) => xs.map((x) => (x.id === res.id ? apiRes.data : x)))
               toast("Réservation mise à jour.")
               await reload()

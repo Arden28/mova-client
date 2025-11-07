@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { cn } from "@/lib/utils"
+import { cn, step25 } from "@/lib/utils"
 import { Info, Calendar as CalendarIcon, ChevronsUpDown, Check } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { format } from "date-fns"
@@ -407,7 +407,9 @@ function MapPicker({
     })
     mapRef.current = map
 
-    if (typeof navigator !== "undefined" && navigator.geolocation) {
+    const USE_GEOLOCATION = false; // toggle when needed
+
+    if (USE_GEOLOCATION && typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const { latitude, longitude } = pos.coords
@@ -1374,14 +1376,30 @@ export default function AddEditReservationDialog({
               </div>
 
               <div className="rounded-lg border p-4">
-                <div className="text-xs text-muted-foreground">Part bus</div>
-                <div className="mt-1 text-2xl font-semibold">
-                  {fmtMoney(quote?.bus_payable ?? 0, quoteCurrency)}
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Part bus</div>
+                    <div className="mt-1 text-2xl font-semibold">
+                      {/* {fmtMoney(quote?.bus_payable ?? 0, quoteCurrency)} */}
+                      {fmtMoney(quote?.breakdown.bus_rounded ?? 0, quoteCurrency)}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Réparti entre les bus affectés
+                    </p>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-xs text-muted-foreground">Frais de retrait</div>
+                    <div className="mt-1 text-sm font-medium text-destructive">
+                      -{fmtMoney(quote?.breakdown?.bus_fees ?? 0, quoteCurrency)}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {/* ({(quote?.meta?.bus_mm_percent ?? 0) * 100}%) */}
+                    </div>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Réparti entre les bus affectés
-                </p>
               </div>
+
 
               <div className="rounded-lg border p-4">
                 <div className="text-xs text-muted-foreground">Commission </div>
@@ -1390,89 +1408,43 @@ export default function AddEditReservationDialog({
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">Notre rémunération</p>
               </div>
+
             </div>
 
-            {/* Detailed breakdown */}
-            <div className="rounded-lg border">
-              <div className="px-4 py-3 border-b text-sm font-medium">Détail du calcul</div>
-
-              <div className="p-4 overflow-x-auto">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <div className="text-xs text-muted-foreground">Base</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.base ?? 0, quoteCurrency)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Motivation</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.motivation ?? 0, quoteCurrency)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Évènement</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.event ?? 0, quoteCurrency)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Majoration</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.majorated ?? 0, quoteCurrency)}</div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs text-muted-foreground">Frais client</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.client_fees ?? 0, quoteCurrency)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Client brut</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.client_raw ?? 0, quoteCurrency)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Client arrondi</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.client_rounded ?? form.priceTotal ?? 0, quoteCurrency)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Commission</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.commission ?? 0, quoteCurrency)}</div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs text-muted-foreground">Base bus</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.bus_base ?? 0, quoteCurrency)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Frais bus</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.bus_fees ?? 0, quoteCurrency)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Bus brut</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.bus_raw ?? 0, quoteCurrency)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Bus arrondi</div>
-                    <div className="font-medium">{fmtMoney(quote?.breakdown?.bus_rounded ?? 0, quoteCurrency)}</div>
-                  </div>
-                </div>
-
-                {/* Vehicule Quote */}
-                {quote?.meta && (quote.meta as any)?.vehicles && (
-                  <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm">
-                    {Object.entries((quote.meta as any).vehicles).map(([type, v]: any) => (
-                      <div key={type} className="rounded-md border p-3">
+            {/* Vehicule Quote */}
+            {quote?.meta && (quote.meta as any)?.vehicles && (
+              <div className="mt-2 grid md:grid-cols-2 gap-3">
+                {Object.entries((quote.meta as any).vehicles).map(([type, v]: any) => (
+                  <div key={type} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between">
+                      {/* Left: Type and basic info */}
+                      <div>
                         <div className="text-xs text-muted-foreground capitalize">{type}</div>
                         <div className="mt-1 flex flex-wrap gap-6">
-                          <span>Nb: <b>{v.count}</b></span>
-                          <span>Base: <b>{fmtMoney(v.base, quoteCurrency)}</b></span>
-                          <span>Motivation: <b>{fmtMoney(v.motivation, quoteCurrency)}</b></span>
+                          <span>
+                            Nb: <b>{v.count}</b>
+                          </span>
+                          <span>
+                            Total: <b>{fmtMoney(step25(v.bus_final), quoteCurrency)}</b>
+                          </span>
                         </div>
                       </div>
-                    ))}
+
+                      {/* Right: per-bus info (only if multiple buses) */}
+                      {v.count > 1 && (
+                      <div className="text-right">
+                        <div className="text-xs text-muted-foreground">Par bus</div>
+                        <div className="mt-1 text-sm font-medium">
+                          {fmtMoney(step25(v.bus_final / v.count), quoteCurrency)}
+                        </div>
+                      </div>
+                      )}
+                    </div>
                   </div>
-                )}
-                
-                {quote?.meta && (
-                  <pre className="mt-3 p-3 bg-muted text-sm rounded-md overflow-x-auto">
-                    {JSON.stringify(quote.meta, null, 2)}
-                  </pre>
-                )}
+                ))}
               </div>
-            </div>
+            )}
+
 
             {/* (Optional) Status controls — keep if you still want workflow state */}
             <div className="grid gap-1.5">
@@ -1494,75 +1466,6 @@ export default function AddEditReservationDialog({
             </div>
           </div>
 
-
-          {/* Détails réservation */}
-          {/* <div className="space-y-3 py-4">
-            <h3 className="text-sm font-medium text-muted-foreground">Détails de la réservation</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label>Sièges</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={form.seats ?? 1}
-                  onChange={(e) => setField("seats", Number(e.target.value) as any)}
-                />
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label>Type de véhicule</Label>
-                <select
-                  className="h-9 rounded-md border bg-background px-3 text-sm capitalize"
-                  value={vehicleType}
-                  onChange={(e) => setVehicleType(e.target.value as VehicleType)}
-                  disabled={busIds.length > 0}
-                >
-                  <option value="hiace">hiace</option>
-                  <option value="coaster">coaster</option>
-                </select>
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label>Évènement</Label>
-                <EventCombobox value={eventType} onChange={setEventType} />
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label>Total</Label>
-                <div className="relative">
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.priceTotal ?? 0}
-                    onChange={(e) => setField("priceTotal", Number(e.target.value) as any)}
-                    className="pr-16"
-                    readOnly
-                  />
-                  <div className="pointer-events-none absolute inset-y-0 right-0 grid w-16 place-items-center text-xs text-muted-foreground">
-                    {quoteCurrency}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-1.5 sm:col-span-2">
-                <Label>Statut</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {["pending", "confirmed", "cancelled"].map((s) => (
-                    <Button
-                      key={s}
-                      type="button"
-                      variant={(form.status ?? "pending") === s ? "default" : "outline"}
-                      onClick={() => setField("status", s as any)}
-                    >
-                      {s === "pending" && "En attente"}
-                      {s === "confirmed" && "Confirmée"}
-                      {s === "cancelled" && "Annulée"}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div> */}
         </div>
 
         {/* Footer */}

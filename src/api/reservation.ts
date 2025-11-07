@@ -4,7 +4,14 @@ import api, { buildQuery } from "@/api/apiService"
 /* ------------------------------- Server DTOs ------------------------------- */
 
 export type ReservationStatus = "pending" | "confirmed" | "cancelled"
-export type ReservationEvent = "none" | "wedding" | "funeral" | "church"
+export type ReservationEvent =
+  | "none" | "school_trip" | "university_trip" | "educational_tour" | "student_transport"
+  | "wedding" | "funeral" | "birthday" | "baptism" | "family_meeting"
+  | "conference" | "seminar" | "company_trip" | "business_mission" | "staff_shuttle"
+  | "football_match" | "sports_tournament" | "concert" | "festival" | "school_competition"
+  | "tourist_trip" | "group_excursion" | "pilgrimage" | "site_visit" | "airport_transfer"
+  | "election_campaign" | "administrative_mission" | "official_trip" | "private_transport"
+  | "special_event" | "simple_rental"
 
 export type WaypointDto = {
   lat: number
