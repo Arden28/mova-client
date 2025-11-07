@@ -1465,6 +1465,12 @@ export default function AddEditReservationDialog({
                     ))}
                   </div>
                 )}
+                
+                {quote?.meta && (
+                  <pre className="mt-3 p-3 bg-muted text-sm rounded-md overflow-x-auto">
+                    {JSON.stringify(quote.meta, null, 2)}
+                  </pre>
+                )}
               </div>
             </div>
 
